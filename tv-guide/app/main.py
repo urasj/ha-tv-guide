@@ -226,8 +226,30 @@ async def set_service(show_id: int, request: Request):
 
 # ── TMDB service scan ─────────────────────────────────────
 
+def build_deep_link(svc: str, title: str, ext_ids: dict) -> str:
+    """Build the best deep link URL for a show on a given service."""
+    from urllib.parse import quote
+    q = quote(title)
+    # Direct links using known external IDs
+    if svc == "netflix" and ext_ids.get("netflix"):
+        return f"https://www.netflix.com/title/{ext_ids['netflix']}"
+    # Search fallbacks - open service search for the show title
+    search_urls = {
+        "netflix":   f"https://www.netflix.com/search?q={q}",
+        "hulu":      f"https://www.hulu.com/search?q={q}",
+        "disney":    f"https://www.disneyplus.com/search/{q}",
+        "max":       f"https://play.max.com/search/result?q={q}",
+        "peacock":   f"https://www.peacocktv.com/search?q={q}",
+        "discovery": f"https://www.discoveryplus.com/search?q={q}",
+        "prime":     f"https://www.amazon.com/s?k={q}&i=prime-instant-video",
+        "apple":     f"https://tv.apple.com/search?term={q}",
+        "paramount": f"https://www.paramountplus.com/search/?query={q}",
+        "plex":      f"https://app.plex.tv/desktop/#!/search?query={q}",
+    }
+    return search_urls.get(svc, "")
+
 @app.get("/api/shows/{show_id}/scan-service")
-async def scan_service(show_id: int, tvdb_id: int):
+async def scan_service(show_id: int, tvdb_id: int, title: str = ""):
     async with httpx.AsyncClient() as client:
         # Find on TMDB via TVDB ID
         r = await client.get(
@@ -240,6 +262,14 @@ async def scan_service(show_id: int, tvdb_id: int):
         if not results:
             return {"service": None}
         tmdb_id = results[0]["id"]
+        show_title = title or results[0].get("name", "")
+
+        # Get external IDs (Netflix ID etc)
+        ext_r = await client.get(
+            f"{TMDB_BASE}/tv/{tmdb_id}/external_ids",
+            params={"api_key": TMDB_KEY}, timeout=10
+        )
+        ext_ids = ext_r.json() if ext_r.status_code == 200 else {}
 
         # Get watch providers
         r2 = await client.get(
@@ -254,11 +284,13 @@ async def scan_service(show_id: int, tvdb_id: int):
             name = p.get("provider_name", "").lower()
             for key, svc in TMDB_SVC_MAP.items():
                 if key in name:
-                    # Save it
+                    deep_link = build_deep_link(svc, show_title, ext_ids)
                     d = load_data()
                     d["services"][str(show_id)] = svc
+                    if deep_link:
+                        d.setdefault("deep_links", {})[str(show_id)] = deep_link
                     save_data(d)
-                    return {"service": svc, "provider": p.get("provider_name")}
+                    return {"service": svc, "provider": p.get("provider_name"), "deep_link": deep_link}
         return {"service": None}
 
 @app.post("/api/scan-all")
@@ -266,6 +298,7 @@ async def scan_all(request: Request):
     body = await request.json()
     shows = body.get("shows", [])
     results = {}
+    deep_links = {}
     async with httpx.AsyncClient() as client:
         for show in shows:
             sid = str(show["id"])
@@ -278,8 +311,16 @@ async def scan_all(request: Request):
                 )
                 tv = r.json().get("tv_results", [])
                 if not tv: continue
+                tmdb_id = tv[0]["id"]
+                show_title = show.get("title", tv[0].get("name", ""))
+                # Get external IDs for direct deep links
+                ext_r = await client.get(
+                    f"{TMDB_BASE}/tv/{tmdb_id}/external_ids",
+                    params={"api_key": TMDB_KEY}, timeout=10
+                )
+                ext_ids = ext_r.json() if ext_r.status_code == 200 else {}
                 r2 = await client.get(
-                    f"{TMDB_BASE}/tv/{tv[0]['id']}/watch/providers",
+                    f"{TMDB_BASE}/tv/{tmdb_id}/watch/providers",
                     params={"api_key": TMDB_KEY}, timeout=10
                 )
                 us = r2.json().get("results", {}).get("US", {})
@@ -289,6 +330,7 @@ async def scan_all(request: Request):
                     for key, svc in TMDB_SVC_MAP.items():
                         if key in name:
                             results[sid] = svc
+                            deep_links[sid] = build_deep_link(svc, show_title, ext_ids)
                             break
                     if sid in results: break
             except: pass
@@ -296,6 +338,7 @@ async def scan_all(request: Request):
     # Save all at once
     d = load_data()
     d["services"].update(results)
+    d.setdefault("deep_links", {}).update({k: v for k, v in deep_links.items() if v})
     save_data(d)
     return {"results": results, "scanned": len(shows), "found": len(results)}
 
@@ -313,27 +356,39 @@ async def firetv_launch(request: Request):
     profiles = APP_PROFILES.get(svc, [])
     profile_name = profiles[profile_index] if profile_index < len(profiles) else ""
 
+    body2 = await request.json() if False else None  # already read above
+    show_id = body.get("showId")
+    deep_link = None
+    if show_id:
+        d = load_data()
+        deep_link = d.get("deep_links", {}).get(str(show_id))
+
     async with httpx.AsyncClient() as client:
         # Step 1: Wake the Fire TV
         await ha_call(client, "media_player", "turn_on", {"entity_id": FIRETV_ENT})
         await asyncio.sleep(2.0)
-        # Step 2: Go home to stop current playback
-        await ha_adb(client, "input keyevent KEYCODE_HOME")
-        await asyncio.sleep(1.5)
-        # Step 3: Launch - use specific component if known, else monkey
-        if component:
-            await ha_adb(client, f"am start -n {component}")
-        else:
-            await ha_adb(client, f"monkey -p {pkg} 1")
-        # Step 4: Profile selection if needed
-        if profiles and len(profiles) > 1:
-            await asyncio.sleep(5.0)
-            for _ in range(profile_index):
-                await ha_adb(client, "input keyevent KEYCODE_DPAD_RIGHT")
-                await asyncio.sleep(0.3)
-            await ha_adb(client, "input keyevent KEYCODE_DPAD_CENTER")
 
-    return {"ok": True, "service": svc, "package": pkg, "profile": profile_name}
+        if deep_link:
+            # Launch directly to the show via deep link (skips profile picker)
+            await ha_adb(client, f"am start -a android.intent.action.VIEW -d \"{deep_link}\" {pkg}")
+        else:
+            # Step 2: Go home to stop current playback
+            await ha_adb(client, "input keyevent KEYCODE_HOME")
+            await asyncio.sleep(1.5)
+            # Step 3: Launch app then handle profile
+            if component:
+                await ha_adb(client, f"am start -n {component}")
+            else:
+                await ha_adb(client, f"monkey -p {pkg} 1")
+            # Step 4: Profile selection if needed
+            if profiles and len(profiles) > 1:
+                await asyncio.sleep(5.0)
+                for _ in range(profile_index):
+                    await ha_adb(client, "input keyevent KEYCODE_DPAD_RIGHT")
+                    await asyncio.sleep(0.3)
+                await ha_adb(client, "input keyevent KEYCODE_DPAD_CENTER")
+
+    return {"ok": True, "service": svc, "package": pkg, "profile": profile_name, "deep_link": deep_link}
 
 @app.post("/api/firetv/command")
 async def firetv_command(request: Request):

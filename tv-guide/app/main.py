@@ -16,7 +16,7 @@ HA_URL       = os.environ.get("HA_URL", "http://homeassistant:8123")
 HA_TOKEN     = os.environ.get("HA_TOKEN", "")
 FIRETV_ENT   = os.environ.get("FIRETV_ENTITY", "media_player.fire_tv_192_168_7_211")
 SONOS_ENT    = os.environ.get("SONOS_ENTITY", "media_player.living_room")
-INGRESS_PATH = os.environ.get("INGRESS_PATH", "")
+INGRESS_PATH = os.environ.get("INGRESS_PATH", "").rstrip("/")
 
 TMDB_BASE = "https://api.themoviedb.org/3"
 TMDB_IMG  = "https://image.tmdb.org/t/p/w500"
@@ -77,7 +77,7 @@ def save_data(d):
     DATA_FILE.write_text(json.dumps(d, indent=2))
 
 # ── App ──────────────────────────────────────────────────
-app = FastAPI(title="TV Guide", root_path=INGRESS_PATH)
+app = FastAPI(title="TV Guide")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 app.mount("/static", StaticFiles(directory="/app/static"), name="static")
 
@@ -95,9 +95,10 @@ async def ha_adb(client: httpx.AsyncClient, command: str):
 
 # ── Routes ───────────────────────────────────────────────
 
-@app.get("/", response_class=HTMLResponse)
+@app.get("/")
+@app.get("/ingress")
 async def index():
-    return Path("/app/static/index.html").read_text()
+    return HTMLResponse(Path("/app/static/index.html").read_text())
 
 @app.get("/api/status")
 async def status():

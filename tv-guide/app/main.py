@@ -29,26 +29,27 @@ APP_PROFILES = {
     "discovery": ["Justin", "Kristen"],
 }
 
-# Package names for ADB
-APP_PACKAGES = {
-    "netflix":   "com.netflix.ninja",
-    "hulu":      "com.hulu.plus",
-    "disney":    "com.disney.disneyplus",
-    "max":       "com.hbo.hbonow",
-    "peacock":   "com.peacock.peacockfiretv",
-    "discovery": "com.discovery.discoveryplus.firetv",
-    "tubi":      "com.tubitv.ott",
-    "pluto":     "tv.pluto.android",
-    "youtube":   "com.amazon.firetv.youtube",
-    "prime":     "com.amazon.avod.thirdpartyclient",
-    "plex":      "com.plexapp.android",
-    "paramount": "com.cbs.ott",
-    "apple":     "com.apple.atve.amazon.appletv",
-    "amc":       "com.amcplus.firetv",
-    "shudder":   "com.amc.shudder",
-    "crunchyroll":"com.crunchyroll.crunchyroid",
-    "starz":     "com.bydeluxe.d3.android.program.starz",
+# Maps service -> (package, component) - component verified via dumpsys on device
+APP_LAUNCH = {
+    "netflix":    ("com.netflix.ninja",                   "com.netflix.ninja/.MainActivity"),
+    "hulu":       ("com.hulu.plus",                       "com.hulu.plus/.SplashActivity"),
+    "disney":     ("com.disney.disneyplus",               "com.disney.disneyplus/com.bamtechmedia.dominguez.main.MainActivity"),
+    "max":        ("com.hbo.hbonow",                      "com.hbo.hbonow/com.wbd.beam.BeamActivity"),
+    "peacock":    ("com.peacock.peacockfiretv",            "com.peacock.peacockfiretv/com.peacock.peacocktv.AmazonMainActivity"),
+    "discovery":  ("com.discovery.discoveryplus.firetv",  "com.discovery.discoveryplus.firetv/com.wbd.beam.BeamActivity"),
+    "tubi":       ("com.tubitv.ott",                      None),
+    "pluto":      ("tv.pluto.android",                    None),
+    "youtube":    ("com.amazon.firetv.youtube",           None),
+    "prime":      ("com.amazon.avod.thirdpartyclient",    None),
+    "plex":       ("com.plexapp.android",                 None),
+    "paramount":  ("com.cbs.ott",                         None),
+    "apple":      ("com.apple.atve.amazon.appletv",       None),
+    "amc":        ("com.amcplus.firetv",                  None),
+    "shudder":    ("com.amc.shudder",                     None),
+    "crunchyroll":("com.crunchyroll.crunchyroid",         None),
+    "starz":      ("com.bydeluxe.d3.android.program.starz", None),
 }
+APP_PACKAGES = {k: v[0] for k, v in APP_LAUNCH.items()}
 
 SVCS = {
     "netflix":"Netflix","hulu":"Hulu","disney":"Disney+","max":"Max",
@@ -305,27 +306,28 @@ async def firetv_launch(request: Request):
     body = await request.json()
     svc = body.get("service")
     profile_index = body.get("profileIndex", 0)
-    pkg = APP_PACKAGES.get(svc)
-    if not pkg:
+    launch = APP_LAUNCH.get(svc)
+    if not launch:
         raise HTTPException(400, f"Unknown service: {svc}")
+    pkg, component = launch
     profiles = APP_PROFILES.get(svc, [])
     profile_name = profiles[profile_index] if profile_index < len(profiles) else ""
-    launched = False
 
     async with httpx.AsyncClient() as client:
         # Step 1: Wake the Fire TV
         await ha_call(client, "media_player", "turn_on", {"entity_id": FIRETV_ENT})
         await asyncio.sleep(2.0)
-        # Step 2: Go home
+        # Step 2: Go home to stop current playback
         await ha_adb(client, "input keyevent KEYCODE_HOME")
         await asyncio.sleep(1.5)
-        # Step 3: Launch via monkey (most reliable for Fire TV apps)
-        await ha_adb(client, f"monkey -p {pkg} 1")
-        # Step 4: Wait for app to load
+        # Step 3: Launch - use specific component if known, else monkey
+        if component:
+            await ha_adb(client, f"am start -n {component}")
+        else:
+            await ha_adb(client, f"monkey -p {pkg} 1")
+        # Step 4: Profile selection if needed
         if profiles and len(profiles) > 1:
-            # Longer wait needed for profile screen
             await asyncio.sleep(5.0)
-            # Navigate to correct profile
             for _ in range(profile_index):
                 await ha_adb(client, "input keyevent KEYCODE_DPAD_RIGHT")
                 await asyncio.sleep(0.3)
@@ -415,5 +417,4 @@ async def sonos_command(request: Request):
 
 # ── Serve ─────────────────────────────────────────────────
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8099, log_level="info")
     uvicorn.run(app, host="0.0.0.0", port=8099, log_level="info")

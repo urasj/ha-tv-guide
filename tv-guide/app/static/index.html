@@ -350,18 +350,22 @@ async function launchEpisode(sid,svc,ep){
   const profiles=status.profiles[svc];
   if(profiles&&profiles.length>1){
     showProfilePicker(svc,async(idx)=>{
-      await doLaunch(svc,idx);
+      await doLaunch(svc,idx,sid);
     });
   }else{
-    await doLaunch(svc,0);
+    await doLaunch(svc,0,sid);
   }
 }
 
-async function doLaunch(svc,profileIndex){
+async function doLaunch(svc,profileIndex,showId){
   toast(`🔥 Launching ${SVCS_LABELS[svc]}…`);
   try{
-    await post('api/firetv/launch',{service:svc,profileIndex});
-    toast(`✓ Launched ${SVCS_LABELS[svc]}`);
+    const res=await post('api/firetv/launch',{service:svc,profileIndex,showId});
+    if(res.deep_link){
+      toast(`✓ Opening show on ${SVCS_LABELS[svc]}`);
+    }else{
+      toast(`✓ Launched ${SVCS_LABELS[svc]}`);
+    }
   }catch(e){toast('Launch failed: '+e.message,'error');}
 }
 

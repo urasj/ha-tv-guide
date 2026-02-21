@@ -163,8 +163,8 @@ const SVCS_LABELS={
 // ── Init ─────────────────────────────────────────────────
 async function init(){
   try{
-    status = await api('/api/status');
-    appData = await api('/api/data');
+    status = await api('api/status');
+    appData = await api('api/data');
     await loadShows();
   }catch(e){toast('Failed to connect to backend: '+e.message,'error');}
 }
@@ -186,7 +186,7 @@ async function del(path){
 async function loadShows(){
   document.getElementById('refreshBtn').innerHTML='<span class="spinner"></span>';
   try{
-    shows = await api('/api/shows');
+    shows = await api('api/shows');
     renderShowList();
   }catch(e){toast('Sonarr error: '+e.message,'error');}
   document.getElementById('refreshBtn').textContent='↻ Refresh';
@@ -220,7 +220,7 @@ async function selectShow(id){
   renderShowList(document.getElementById('searchInput').value.toLowerCase());
   renderDetail();
   try{
-    episodes=await api(`/api/shows/${id}/episodes`);
+    episodes=await api(`api/shows/${id}/episodes`);
     renderDetail();
   }catch(e){toast('Could not load episodes','error');}
 }
@@ -306,7 +306,7 @@ async function setService(sid,svc){
   const prev=appData.services[sid];
   appData.services[sid]=svc===prev?null:svc;
   if(svc===prev) delete appData.services[sid];
-  await post(`/api/shows/${sid}/service`,{service:appData.services[sid]||null});
+  await post(`api/shows/${sid}/service`,{service:appData.services[sid]||null});
   renderDetail();
   renderShowList(document.getElementById('searchInput').value.toLowerCase());
 }
@@ -317,7 +317,7 @@ async function scanAll(){
   btn.innerHTML='<span class="spinner"></span> Scanning…';
   btn.disabled=true;
   try{
-    const res=await post('/api/scan-all',{shows});
+    const res=await post('api/scan-all',{shows});
     appData.services={...appData.services,...res.results};
     renderShowList(document.getElementById('searchInput').value.toLowerCase());
     if(currentShow)renderDetail();
@@ -331,11 +331,11 @@ async function scanAll(){
 async function toggleWatched(sid,epId,isWatched){
   if(isWatched){
     appData.watched[sid]=(appData.watched[sid]||[]).filter(e=>e!==epId);
-    await del(`/api/shows/${sid}/watched/${epId}`);
+    await del(`api/shows/${sid}/watched/${epId}`);
   }else{
     if(!appData.watched[sid])appData.watched[sid]=[];
     appData.watched[sid].push(epId);
-    await post(`/api/shows/${sid}/watched/${epId}`,{});
+    await post(`api/shows/${sid}/watched/${epId}`,{});
   }
   const row=document.getElementById(`ep-${epId}`);
   if(row){
@@ -360,7 +360,7 @@ async function launchEpisode(sid,svc,ep){
 async function doLaunch(svc,profileIndex){
   toast(`🔥 Launching ${SVCS_LABELS[svc]}…`);
   try{
-    await post('/api/firetv/launch',{service:svc,profileIndex});
+    await post('api/firetv/launch',{service:svc,profileIndex});
     toast(`✓ Launched ${SVCS_LABELS[svc]}`);
   }catch(e){toast('Launch failed: '+e.message,'error');}
 }

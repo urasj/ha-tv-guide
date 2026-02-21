@@ -312,51 +312,26 @@ async def firetv_launch(request: Request):
     profile_name = profiles[profile_index] if profile_index < len(profiles) else ""
     launched = False
 
-    async def get_focus(client):
-        try:
-            await ha_adb(client, "dumpsys window windows | grep mCurrentFocus")
-            await asyncio.sleep(0.3)
-            r = await client.get(
-                f"{HA_URL}/api/states/{FIRETV_ENT}",
-                headers={"Authorization": f"Bearer {HA_TOKEN}"}, timeout=5
-            )
-            return r.json().get("attributes", {}).get("adb_response", "")
-        except:
-            return ""
-
-    async def wait_for_pkg(client, pkg, timeout=12):
-        for _ in range(timeout * 2):
-            focus = await get_focus(client)
-            if pkg in focus:
-                return True
-            await asyncio.sleep(0.5)
-        return False
-
     async with httpx.AsyncClient() as client:
-        # Wake
+        # Step 1: Wake the Fire TV
         await ha_call(client, "media_player", "turn_on", {"entity_id": FIRETV_ENT})
-        await asyncio.sleep(1.0)
-        # Home to stop current playback
+        await asyncio.sleep(2.0)
+        # Step 2: Go home
         await ha_adb(client, "input keyevent KEYCODE_HOME")
         await asyncio.sleep(1.5)
-        # Launch with am start
-        await ha_adb(client, f"am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p {pkg}")
-        await asyncio.sleep(1.0)
-        # Poll until app is in foreground
-        launched = await wait_for_pkg(client, pkg, timeout=12)
-        if not launched:
-            # Fallback to monkey
-            await ha_adb(client, f"monkey -p {pkg} -c android.intent.category.LAUNCHER 1")
-            launched = await wait_for_pkg(client, pkg, timeout=8)
-        # Profile selection
-        if launched and profiles and len(profiles) > 1:
-            await asyncio.sleep(3.0)
+        # Step 3: Launch via monkey (most reliable for Fire TV apps)
+        await ha_adb(client, f"monkey -p {pkg} 1")
+        # Step 4: Wait for app to load
+        if profiles and len(profiles) > 1:
+            # Longer wait needed for profile screen
+            await asyncio.sleep(5.0)
+            # Navigate to correct profile
             for _ in range(profile_index):
                 await ha_adb(client, "input keyevent KEYCODE_DPAD_RIGHT")
-                await asyncio.sleep(0.25)
+                await asyncio.sleep(0.3)
             await ha_adb(client, "input keyevent KEYCODE_DPAD_CENTER")
 
-    return {"ok": True, "service": svc, "package": pkg, "profile": profile_name, "launched": launched}
+    return {"ok": True, "service": svc, "package": pkg, "profile": profile_name}
 
 @app.post("/api/firetv/command")
 async def firetv_command(request: Request):
@@ -440,4 +415,5 @@ async def sonos_command(request: Request):
 
 # ── Serve ─────────────────────────────────────────────────
 if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8099, log_level="info")
     uvicorn.run(app, host="0.0.0.0", port=8099, log_level="info")

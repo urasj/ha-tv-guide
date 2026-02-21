@@ -1,8 +1,9 @@
-FROM python:3.11-alpine
+ARG BUILD_FROM
+FROM $BUILD_FROM
 
 ENV LANG=C.UTF-8
 
-RUN apk add --no-cache jq bash
+RUN apk add --no-cache python3 py3-pip jq bash
 
 WORKDIR /app
 
@@ -11,7 +12,7 @@ RUN pip3 install --no-cache-dir -r requirements.txt
 
 COPY app/ .
 
-COPY run.sh /run.sh
-RUN chmod +x /run.sh
-
-CMD ["/run.sh"]
+# s6 service directory
+RUN mkdir -p /etc/services.d/tv-guide
+COPY services/tv-guide/run /etc/services.d/tv-guide/run
+RUN chmod +x /etc/services.d/tv-guide/run

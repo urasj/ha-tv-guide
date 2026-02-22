@@ -413,6 +413,41 @@ async def scan_all(request: Request):
 
 # ── Fire TV ───────────────────────────────────────────────
 
+async def poll_until_app_ready(client, pkg: str, timeout: int = 30) -> bool:
+    """Poll mResumedActivity until the target app has been stably resumed for 3 consecutive checks.
+    This replaces fixed sleep timers — fires the deep link only when the app is actually ready.
+    """
+    stable_count = 0
+    required_stable = 3  # must see the app as top activity 3 times in a row
+    poll_interval = 1.5
+    elapsed = 0.0
+
+    while elapsed < timeout:
+        await asyncio.sleep(poll_interval)
+        elapsed += poll_interval
+        try:
+            result = await ha_adb(client, "dumpsys activity activities | grep mResumedActivity")
+            data = result.json()
+            # HA returns a list of entity states; adb_response is in attributes
+            resp = ""
+            if isinstance(data, list) and data:
+                resp = data[0].get("attributes", {}).get("adb_response", "")
+            elif isinstance(data, dict):
+                resp = data.get("attributes", {}).get("adb_response", "")
+            if pkg in resp:
+                stable_count += 1
+                if stable_count >= required_stable:
+                    # App has been stable for 3 consecutive polls — it's ready
+                    await asyncio.sleep(1.0)  # small extra buffer
+                    return True
+            else:
+                stable_count = 0  # reset if app not yet on top
+        except Exception:
+            stable_count = 0
+
+    return False  # timed out
+
+
 @app.post("/api/firetv/launch")
 async def firetv_launch(request: Request):
     body = await request.json()
@@ -439,28 +474,35 @@ async def firetv_launch(request: Request):
         await ha_call(client, "media_player", "turn_on", {"entity_id": FIRETV_ENT})
         await asyncio.sleep(2.0)
 
+        # Always force-stop first so we get a clean launch with no stale state
+        await ha_adb(client, f"am force-stop {pkg}")
+        await asyncio.sleep(1.5)
+
         if deep_link and not needs_profile:
-            # No profiles needed — fire deep link directly
-            await ha_adb(client, f"am start -a android.intent.action.VIEW -d \"{deep_link}\" {pkg}")
-        else:
-            # Step 2: Force stop to clear stale state, then launch fresh
-            await ha_adb(client, f"am force-stop {pkg}")
-            await asyncio.sleep(1.5)
-            # Step 3: Launch app
+            # No profiles needed — launch app, poll until ready, then fire deep link
             if component:
                 await ha_adb(client, f"am start -n {component}")
             else:
                 await ha_adb(client, f"monkey -p {pkg} 1")
-            # Step 4: Profile selection
+            await poll_until_app_ready(client, pkg, timeout=30)
+            await ha_adb(client, f"am start -a android.intent.action.VIEW -d \"{deep_link}\" {pkg}")
+        else:
+            # Step 2: Launch app
+            if component:
+                await ha_adb(client, f"am start -n {component}")
+            else:
+                await ha_adb(client, f"monkey -p {pkg} 1")
+            # Step 3: Profile selection — poll until profile screen is up, then select
             if needs_profile:
-                await asyncio.sleep(5.0)
+                await poll_until_app_ready(client, pkg, timeout=20)
                 for _ in range(profile_index):
                     await ha_adb(client, "input keyevent KEYCODE_DPAD_RIGHT")
                     await asyncio.sleep(0.3)
                 await ha_adb(client, "input keyevent KEYCODE_DPAD_CENTER")
-                # Step 5: After profile selected, fire deep link if we have one
+                # Step 4: Poll until app is stable on home screen after profile, then fire deep link
                 if deep_link:
-                    await asyncio.sleep(12.0)  # wait for app to fully load after profile selection
+                    await asyncio.sleep(2.0)  # brief pause for profile transition to start
+                    await poll_until_app_ready(client, pkg, timeout=30)
                     await ha_adb(client, f"am start -a android.intent.action.VIEW -d \"{deep_link}\" {pkg}")
 
     return {"ok": True, "service": svc, "package": pkg, "profile": profile_name, "deep_link": deep_link}

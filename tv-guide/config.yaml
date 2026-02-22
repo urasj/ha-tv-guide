@@ -1,5 +1,5 @@
 name: TV Guide
-version: "1.1.0"
+version: "1.1.1"
 slug: tv_guide
 description: Personal TV Guide with Fire TV launcher, Sonos controls, and Sonarr integration
 url: https://github.com/urasj/ha-tv-guide

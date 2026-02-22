@@ -29,20 +29,20 @@ APP_PROFILES = {
     "discovery": ["Justin", "Kristen"],
 }
 
-# Maps service -> (package, component) - component verified via dumpsys on device
+# Maps service -> (package, component) - ALL components live-tested via ADB on device
 APP_LAUNCH = {
-    "netflix":    ("com.netflix.ninja",                   "com.netflix.ninja/.MainActivity"),
-    "hulu":       ("com.hulu.plus",                       "com.hulu.plus/.SplashActivity"),
+    "netflix":    ("com.netflix.ninja",                   "com.netflix.ninja/com.netflix.ninja.MainActivity"),
+    "hulu":       ("com.hulu.plus",                       "com.hulu.plus/com.hulu.plus.SplashActivity"),
     "disney":     ("com.disney.disneyplus",               "com.disney.disneyplus/com.bamtechmedia.dominguez.main.MainActivity"),
     "max":        ("com.hbo.hbonow",                      "com.hbo.hbonow/com.wbd.beam.BeamActivity"),
     "peacock":    ("com.peacock.peacockfiretv",            "com.peacock.peacockfiretv/com.peacock.peacocktv.AmazonMainActivity"),
     "discovery":  ("com.discovery.discoveryplus.firetv",  "com.discovery.discoveryplus.firetv/com.wbd.beam.BeamActivity"),
-    "tubi":       ("com.tubitv.ott",                      None),
-    "pluto":      ("tv.pluto.android",                    None),
-    "youtube":    ("com.amazon.firetv.youtube",           None),
-    "prime":      ("com.amazon.avod.thirdpartyclient",    None),
-    "plex":       ("com.plexapp.android",                 None),
-    "paramount":  ("com.cbs.ott",                         None),
+    "tubi":       ("com.tubitv.ott",                      "com.tubitv.ott/com.tubitv.activities.FireTVMainActivity"),
+    "pluto":      ("tv.pluto.android",                    "tv.pluto.android/tv.pluto.android.EntryPoint"),
+    "youtube":    ("com.amazon.firetv.youtube",           "com.amazon.firetv.youtube/dev.cobalt.app.MainActivity"),
+    "plex":       ("com.plexapp.android",                 "com.plexapp.android/com.plexapp.plex.activities.SplashActivity"),
+    "paramount":  ("com.cbs.ott",                         "com.cbs.ott/com.paramount.android.pplus.features.splash.tv.SplashMediatorActivity"),
+    "prime":      ("com.amazon.firebat",                  "com.amazon.firebat/com.amazon.firebatcore.deeplink.DeepLinkRoutingActivity"),
     "apple":      ("com.apple.atve.amazon.appletv",       None),
     "amc":        ("com.amcplus.firetv",                  None),
     "shudder":    ("com.amc.shudder",                     None),

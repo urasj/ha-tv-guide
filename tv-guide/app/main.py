@@ -460,7 +460,7 @@ async def firetv_launch(request: Request):
                 await ha_adb(client, "input keyevent KEYCODE_DPAD_CENTER")
                 # Step 5: After profile selected, fire deep link if we have one
                 if deep_link:
-                    await asyncio.sleep(7.0)  # wait for app to fully load after profile selection
+                    await asyncio.sleep(12.0)  # wait for app to fully load after profile selection
                     await ha_adb(client, f"am start -a android.intent.action.VIEW -d \"{deep_link}\" {pkg}")
 
     return {"ok": True, "service": svc, "package": pkg, "profile": profile_name, "deep_link": deep_link}

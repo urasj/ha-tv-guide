@@ -413,39 +413,77 @@ async def scan_all(request: Request):
 
 # ── Fire TV ───────────────────────────────────────────────
 
+async def get_resumed_activity(client) -> str:
+    """Return the current mResumedActivity string."""
+    try:
+        result = await ha_adb(client, "dumpsys activity activities | grep mResumedActivity")
+        data = result.json()
+        if isinstance(data, list) and data:
+            return data[0].get("attributes", {}).get("adb_response", "")
+        elif isinstance(data, dict):
+            return data.get("attributes", {}).get("adb_response", "")
+    except Exception:
+        pass
+    return ""
+
+
 async def poll_until_app_ready(client, pkg: str, timeout: int = 30) -> bool:
-    """Poll mResumedActivity until the target app has been stably resumed for 3 consecutive checks.
-    This replaces fixed sleep timers — fires the deep link only when the app is actually ready.
+    """Poll until the target app is the stably resumed activity (3 consecutive hits).
+    Used to wait for the profile screen to appear after a fresh app launch.
     """
     stable_count = 0
-    required_stable = 3  # must see the app as top activity 3 times in a row
-    poll_interval = 1.5
     elapsed = 0.0
-
     while elapsed < timeout:
-        await asyncio.sleep(poll_interval)
-        elapsed += poll_interval
-        try:
-            result = await ha_adb(client, "dumpsys activity activities | grep mResumedActivity")
-            data = result.json()
-            # HA returns a list of entity states; adb_response is in attributes
-            resp = ""
-            if isinstance(data, list) and data:
-                resp = data[0].get("attributes", {}).get("adb_response", "")
-            elif isinstance(data, dict):
-                resp = data.get("attributes", {}).get("adb_response", "")
-            if pkg in resp:
-                stable_count += 1
-                if stable_count >= required_stable:
-                    # App has been stable for 3 consecutive polls — it's ready
-                    await asyncio.sleep(1.0)  # small extra buffer
-                    return True
-            else:
-                stable_count = 0  # reset if app not yet on top
-        except Exception:
+        await asyncio.sleep(1.5)
+        elapsed += 1.5
+        resp = await get_resumed_activity(client)
+        if pkg in resp:
+            stable_count += 1
+            if stable_count >= 3:
+                return True
+        else:
             stable_count = 0
+    return False
 
-    return False  # timed out
+
+async def poll_until_loaded_after_profile(client, pkg: str, timeout: int = 40) -> bool:
+    """After profile selection, wait for the app to transition to the home screen.
+    Strategy: wait for the activity to briefly leave (transition) then return stably.
+    If it never leaves (some apps stay on same activity), fall back to a 12s minimum wait.
+    """
+    # Phase 1: wait up to 8s for the app to briefly leave (profile -> home transition)
+    saw_transition = False
+    elapsed = 0.0
+    while elapsed < 8.0:
+        await asyncio.sleep(1.0)
+        elapsed += 1.0
+        resp = await get_resumed_activity(client)
+        if pkg not in resp:
+            saw_transition = True
+            break
+
+    if not saw_transition:
+        # App never left (same BeamActivity for both profile and home screens)
+        # Use a fixed 12s minimum wait from when profile was selected
+        remaining = 12.0 - elapsed
+        if remaining > 0:
+            await asyncio.sleep(remaining)
+
+    # Phase 2: now poll until app is stably on top (home screen loaded)
+    stable_count = 0
+    elapsed2 = 0.0
+    while elapsed2 < timeout:
+        await asyncio.sleep(1.5)
+        elapsed2 += 1.5
+        resp = await get_resumed_activity(client)
+        if pkg in resp:
+            stable_count += 1
+            if stable_count >= 3:
+                await asyncio.sleep(1.0)  # small extra buffer
+                return True
+        else:
+            stable_count = 0
+    return False
 
 
 @app.post("/api/firetv/launch")
@@ -499,10 +537,9 @@ async def firetv_launch(request: Request):
                     await ha_adb(client, "input keyevent KEYCODE_DPAD_RIGHT")
                     await asyncio.sleep(0.3)
                 await ha_adb(client, "input keyevent KEYCODE_DPAD_CENTER")
-                # Step 4: Poll until app is stable on home screen after profile, then fire deep link
+                # Step 4: Wait for home screen to load after profile selection, then fire deep link
                 if deep_link:
-                    await asyncio.sleep(2.0)  # brief pause for profile transition to start
-                    await poll_until_app_ready(client, pkg, timeout=30)
+                    await poll_until_loaded_after_profile(client, pkg, timeout=40)
                     await ha_adb(client, f"am start -a android.intent.action.VIEW -d \"{deep_link}\" {pkg}")
 
     return {"ok": True, "service": svc, "package": pkg, "profile": profile_name, "deep_link": deep_link}

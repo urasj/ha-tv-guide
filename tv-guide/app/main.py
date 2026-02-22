@@ -233,29 +233,41 @@ async def set_service(show_id: int, request: Request):
 # ── TMDB service scan ─────────────────────────────────────
 
 async def fetch_discovery_uuid(client: httpx.AsyncClient, title: str) -> str | None:
-    """Query Discovery+ search API to get the show UUID for direct deep links."""
+    """Query Discovery+ search API to get the show UUID for direct deep links.
+    UUID format confirmed: play.discoveryplus.com/show/{uuid} e.g. 3b65c971-18c9-4cbc-b940-63bc7db85a95
+    """
     try:
         r = await client.get(
             "https://us1-prod-direct.discoveryplus.com/cms/api/us/content/search",
-            params={"query": title, "decorators": "contentAction"},
-            headers={"x-disco-client": "firetv", "accept": "application/json"},
-            timeout=8
+            params={"query": title, "decorators": "contentAction", "include": "default"},
+            headers={
+                "x-disco-client": "firetv:3:2.12.0",
+                "x-disco-st": "us",
+                "accept": "application/json",
+                "user-agent": "Mozilla/5.0"
+            },
+            timeout=10
         )
         if r.status_code != 200:
             return None
         data = r.json()
-        # Look through search results for shows matching the title
+        title_lower = title.lower()
+        # Look for exact show name match first
         for item in data.get("data", []):
+            if item.get("type") != "show":
+                continue
             attrs = item.get("attributes", {})
-            item_type = item.get("type", "")
-            if item_type == "show" and attrs.get("name", "").lower() == title.lower():
-                # alternateId is typically the slug UUID
-                return attrs.get("alternateId") or attrs.get("path")
-        # Fallback: return first show result slug
+            if attrs.get("name", "").lower() == title_lower:
+                uid = item.get("id")  # the UUID is the item's id field
+                if uid and "-" in str(uid):
+                    return uid
+                return attrs.get("alternateId")
+        # Fallback: first show result
         for item in data.get("data", []):
             if item.get("type") == "show":
-                attrs = item.get("attributes", {})
-                return attrs.get("alternateId") or attrs.get("path")
+                uid = item.get("id")
+                if uid and "-" in str(uid):
+                    return uid
     except Exception:
         pass
     return None
@@ -287,7 +299,7 @@ def build_deep_link(svc: str, title: str, ext_ids: dict) -> str:
         "disney":    f"https://www.disneyplus.com/search/{q}",
         "max":       f"https://play.max.com/search/result?q={q}",
         "peacock":   f"https://www.peacocktv.com/search?q={q}",
-        "discovery": f"https://play.discoveryplus.com/show/{slug}",  # app handles play.discoveryplus.com
+        "discovery": f"https://play.discoveryplus.com/show/{slug}",  # UUID preferred, slug as fallback
         "prime":     f"https://www.amazon.com/s?k={q}&i=prime-instant-video",
         "apple":     f"https://tv.apple.com/search?term={q}",
         "paramount": f"https://www.paramountplus.com/shows/{slug}/",
@@ -431,8 +443,8 @@ async def firetv_launch(request: Request):
             # No profiles needed — fire deep link directly
             await ha_adb(client, f"am start -a android.intent.action.VIEW -d \"{deep_link}\" {pkg}")
         else:
-            # Step 2: Go home
-            await ha_adb(client, "input keyevent KEYCODE_HOME")
+            # Step 2: Force stop to clear stale state, then launch fresh
+            await ha_adb(client, f"am force-stop {pkg}")
             await asyncio.sleep(1.5)
             # Step 3: Launch app
             if component:

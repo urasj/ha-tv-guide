@@ -232,27 +232,68 @@ async def set_service(show_id: int, request: Request):
 
 # ── TMDB service scan ─────────────────────────────────────
 
+async def fetch_discovery_uuid(client: httpx.AsyncClient, title: str) -> str | None:
+    """Query Discovery+ search API to get the show UUID for direct deep links."""
+    try:
+        r = await client.get(
+            "https://us1-prod-direct.discoveryplus.com/cms/api/us/content/search",
+            params={"query": title, "decorators": "contentAction"},
+            headers={"x-disco-client": "firetv", "accept": "application/json"},
+            timeout=8
+        )
+        if r.status_code != 200:
+            return None
+        data = r.json()
+        # Look through search results for shows matching the title
+        for item in data.get("data", []):
+            attrs = item.get("attributes", {})
+            item_type = item.get("type", "")
+            if item_type == "show" and attrs.get("name", "").lower() == title.lower():
+                # alternateId is typically the slug UUID
+                return attrs.get("alternateId") or attrs.get("path")
+        # Fallback: return first show result slug
+        for item in data.get("data", []):
+            if item.get("type") == "show":
+                attrs = item.get("attributes", {})
+                return attrs.get("alternateId") or attrs.get("path")
+    except Exception:
+        pass
+    return None
+
+def slugify(title: str) -> str:
+    """Convert show title to URL slug: lowercase, spaces to hyphens, strip special chars."""
+    import re
+    slug = title.lower().strip()
+    slug = re.sub(r"[^a-z0-9\s-]", "", slug)
+    slug = re.sub(r"[\s_]+", "-", slug)
+    slug = re.sub(r"-+", "-", slug).strip("-")
+    return slug
+
 def build_deep_link(svc: str, title: str, ext_ids: dict) -> str:
     """Build the best deep link URL for a show on a given service."""
     from urllib.parse import quote
     q = quote(title)
+    slug = slugify(title)
     # Direct links using known external IDs
     if svc == "netflix" and ext_ids.get("netflix"):
         return f"https://www.netflix.com/title/{ext_ids['netflix']}"
-    # Search fallbacks - open service search for the show title
-    search_urls = {
+    # Discovery+ UUID stored from API lookup takes priority
+    if svc == "discovery" and ext_ids.get("discovery_uuid"):
+        return f"https://play.discoveryplus.com/show/{ext_ids['discovery_uuid']}"
+    # Show page links (better than search — lands on show, not search results)
+    show_urls = {
         "netflix":   f"https://www.netflix.com/search?q={q}",
         "hulu":      f"https://www.hulu.com/search?q={q}",
         "disney":    f"https://www.disneyplus.com/search/{q}",
         "max":       f"https://play.max.com/search/result?q={q}",
         "peacock":   f"https://www.peacocktv.com/search?q={q}",
-        "discovery": f"https://www.discoveryplus.com/search?q={q}",
+        "discovery": f"https://play.discoveryplus.com/show/{slug}",  # app handles play.discoveryplus.com
         "prime":     f"https://www.amazon.com/s?k={q}&i=prime-instant-video",
         "apple":     f"https://tv.apple.com/search?term={q}",
-        "paramount": f"https://www.paramountplus.com/search/?query={q}",
+        "paramount": f"https://www.paramountplus.com/shows/{slug}/",
         "plex":      f"https://app.plex.tv/desktop/#!/search?query={q}",
     }
-    return search_urls.get(svc, "")
+    return show_urls.get(svc, "")
 
 @app.get("/api/shows/{show_id}/scan-service")
 async def scan_service(show_id: int, tvdb_id: int, title: str = ""):
@@ -290,6 +331,11 @@ async def scan_service(show_id: int, tvdb_id: int, title: str = ""):
             name = p.get("provider_name", "").lower()
             for key, svc in TMDB_SVC_MAP.items():
                 if key in name:
+                    # For Discovery+, try to get actual show UUID from their API
+                    if svc == "discovery":
+                        uuid = await fetch_discovery_uuid(client, show_title)
+                        if uuid:
+                            ext_ids["discovery_uuid"] = uuid
                     deep_link = build_deep_link(svc, show_title, ext_ids)
                     d = load_data()
                     d["services"][str(show_id)] = svc
@@ -336,6 +382,11 @@ async def scan_all(request: Request):
                     for key, svc in TMDB_SVC_MAP.items():
                         if key in name:
                             results[sid] = svc
+                            # For Discovery+, try to get UUID for direct show link
+                            if svc == "discovery":
+                                uuid = await fetch_discovery_uuid(client, show_title)
+                                if uuid:
+                                    ext_ids["discovery_uuid"] = uuid
                             deep_links[sid] = build_deep_link(svc, show_title, ext_ids)
                             break
                     if sid in results: break
@@ -397,7 +448,7 @@ async def firetv_launch(request: Request):
                 await ha_adb(client, "input keyevent KEYCODE_DPAD_CENTER")
                 # Step 5: After profile selected, fire deep link if we have one
                 if deep_link:
-                    await asyncio.sleep(4.0)  # wait for home screen to load
+                    await asyncio.sleep(7.0)  # wait for app to fully load after profile selection
                     await ha_adb(client, f"am start -a android.intent.action.VIEW -d \"{deep_link}\" {pkg}")
 
     return {"ok": True, "service": svc, "package": pkg, "profile": profile_name, "deep_link": deep_link}

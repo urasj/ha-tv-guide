@@ -27,6 +27,7 @@ APP_PROFILES = {
     "disney":    ["Justin", "Vicki", "Tony", "Kristen"],
     "peacock":   ["Justin", "Tony", "Kids Profile"],
     "discovery": ["Justin", "Kristen"],
+    "max":       ["Justin", "Shane", "Steph", "Emma"],
 }
 
 # Maps service -> (package, component) - ALL components live-tested via ADB on device
@@ -220,7 +221,12 @@ async def set_progress(show_id: int, request: Request):
 async def set_service(show_id: int, request: Request):
     body = await request.json()
     d = load_data()
-    d["services"][str(show_id)] = body.get("service")
+    new_svc = body.get("service")
+    old_svc = d["services"].get(str(show_id))
+    d["services"][str(show_id)] = new_svc
+    # Clear stale deep link when service is manually changed
+    if new_svc != old_svc:
+        d.get("deep_links", {}).pop(str(show_id), None)
     save_data(d)
     return {"ok": True}
 
@@ -363,30 +369,36 @@ async def firetv_launch(request: Request):
         d = load_data()
         deep_link = d.get("deep_links", {}).get(str(show_id))
 
+    needs_profile = profiles and len(profiles) > 1
+
     async with httpx.AsyncClient() as client:
         # Step 1: Wake the Fire TV
         await ha_call(client, "media_player", "turn_on", {"entity_id": FIRETV_ENT})
         await asyncio.sleep(2.0)
 
-        if deep_link:
-            # Launch directly to the show via deep link (skips profile picker)
+        if deep_link and not needs_profile:
+            # No profiles needed — fire deep link directly
             await ha_adb(client, f"am start -a android.intent.action.VIEW -d \"{deep_link}\" {pkg}")
         else:
-            # Step 2: Go home to stop current playback
+            # Step 2: Go home
             await ha_adb(client, "input keyevent KEYCODE_HOME")
             await asyncio.sleep(1.5)
-            # Step 3: Launch app then handle profile
+            # Step 3: Launch app
             if component:
                 await ha_adb(client, f"am start -n {component}")
             else:
                 await ha_adb(client, f"monkey -p {pkg} 1")
-            # Step 4: Profile selection if needed
-            if profiles and len(profiles) > 1:
+            # Step 4: Profile selection
+            if needs_profile:
                 await asyncio.sleep(5.0)
                 for _ in range(profile_index):
                     await ha_adb(client, "input keyevent KEYCODE_DPAD_RIGHT")
                     await asyncio.sleep(0.3)
                 await ha_adb(client, "input keyevent KEYCODE_DPAD_CENTER")
+                # Step 5: After profile selected, fire deep link if we have one
+                if deep_link:
+                    await asyncio.sleep(4.0)  # wait for home screen to load
+                    await ha_adb(client, f"am start -a android.intent.action.VIEW -d \"{deep_link}\" {pkg}")
 
     return {"ok": True, "service": svc, "package": pkg, "profile": profile_name, "deep_link": deep_link}
 

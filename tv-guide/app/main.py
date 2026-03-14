@@ -266,6 +266,22 @@ def slugify(title: str) -> str:
     slug = re.sub(r"[\s_]+", "-", slug)
     return re.sub(r"-+", "-", slug).strip("-")
 
+async def fetch_disney_entity_id(client: httpx.AsyncClient, tmdb_id: int) -> str | None:
+    """Fetch Disney+ entity ID from TMDB external IDs to build direct show URL."""
+    try:
+        # TMDB doesn't expose Disney+ IDs directly, but we can try their content search
+        r = await client.get(
+            f"https://api.themoviedb.org/3/tv/{tmdb_id}/external_ids",
+            params={"api_key": TMDB_KEY}, timeout=10
+        )
+        if r.status_code == 200:
+            ids = r.json()
+            # Disney+ sometimes exposes IDs via TVDB/IMDB which we can use
+            return None  # No direct Disney entity ID from TMDB
+    except Exception:
+        pass
+    return None
+
 def build_deep_link(svc: str, title: str, ext_ids: dict) -> str:
     from urllib.parse import quote
     q = quote(title)
@@ -277,7 +293,7 @@ def build_deep_link(svc: str, title: str, ext_ids: dict) -> str:
     urls = {
         "netflix":   f"https://www.netflix.com/search?q={q}",
         "hulu":      f"https://www.hulu.com/search?q={q}",
-        "disney":    f"https://www.disneyplus.com/search/{q}",
+        "disney":    f"https://www.disneyplus.com/browse/entity-{ext_ids['disney_entity_id']}" if ext_ids.get('disney_entity_id') else f"https://www.disneyplus.com/series/{slug}",
         "max":       f"https://play.max.com/search/result?q={q}",
         "peacock":   f"https://www.peacocktv.com/search?q={q}",
         "discovery": f"https://play.discoveryplus.com/show/{slug}",
@@ -439,10 +455,10 @@ async def firetv_launch(request: Request):
             await ha_adb(client, "input keyevent KEYCODE_DPAD_CENTER")
             if deep_link:
                 await asyncio.sleep(timing["post_profile"])
-                await ha_adb(client, f'am start -a android.intent.action.VIEW -d "{deep_link}" -n {component} --activity-clear-task' if component else f'am start -a android.intent.action.VIEW -d "{deep_link}" {pkg}')
+                await ha_adb(client, f'am start -a android.intent.action.VIEW -d "{deep_link}" {pkg}')
         elif profile_index >= 0 and deep_link:
             await asyncio.sleep(timing["pre_profile"])
-            await ha_adb(client, f'am start -a android.intent.action.VIEW -d "{deep_link}" -n {component} --activity-clear-task' if component else f'am start -a android.intent.action.VIEW -d "{deep_link}" {pkg}')
+            await ha_adb(client, f'am start -a android.intent.action.VIEW -d "{deep_link}" {pkg}')
 
     return {"ok": True, "service": svc, "package": pkg, "profile": profile_name, "deep_link": deep_link}
 
@@ -463,10 +479,7 @@ async def firetv_deeplink(request: Request):
     if not deep_link:
         raise HTTPException(404, "No deep link stored — open the show and run Scan first")
     async with httpx.AsyncClient() as client:
-        if component:
-            await ha_adb(client, f'am start -a android.intent.action.VIEW -d "{deep_link}" -n {component} --activity-clear-task')
-        else:
-            await ha_adb(client, f'am start -a android.intent.action.VIEW -d "{deep_link}" {pkg}')
+        await ha_adb(client, f'am start -a android.intent.action.VIEW -d "{deep_link}" {pkg}')
     return {"ok": True, "deep_link": deep_link}
 
 @app.post("/api/firetv/command")

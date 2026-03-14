@@ -428,7 +428,7 @@ async def firetv_launch(request: Request):
     if not launch: raise HTTPException(400, f"Unknown service: {svc}")
     pkg, component = launch
     profiles = APP_PROFILES.get(svc, [])
-    profile_name = profiles[profile_index] if profile_index < len(profiles) else ""
+    profile_name = profiles[profile_index] if (profiles and 0 <= profile_index < len(profiles)) else ""
     deep_link = None
     if show_id:
         d = load_data()

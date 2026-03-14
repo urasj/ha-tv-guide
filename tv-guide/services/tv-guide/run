@@ -1,15 +1,14 @@
-#!/bin/bash
-
-CONFIG=/data/options.json
-
-export SONARR_URL=$(jq --raw-output '.sonarr_url' $CONFIG)
-export SONARR_KEY=$(jq --raw-output '.sonarr_key' $CONFIG)
-export TMDB_KEY=$(jq --raw-output '.tmdb_key' $CONFIG)
-export HA_URL=$(jq --raw-output '.ha_url' $CONFIG)
-export HA_TOKEN=$(jq --raw-output '.ha_token' $CONFIG)
-export FIRETV_ENTITY=$(jq --raw-output '.firetv_entity' $CONFIG)
-export SONOS_ENTITY=$(jq --raw-output '.sonos_entity' $CONFIG)
-export INGRESS_PATH=""
-
-echo "Starting TV Guide on port 8099..."
-exec python3 /app/main.py
+#!/usr/bin/with-contenv bashio
+bashio::log.info "Pulling latest from GitHub..."
+cd /repo && git pull origin main 2>&1 | while read line; do bashio::log.info "  git: $line"; done
+cp -f /repo/tv-guide/app/static/index.html /app/static/index.html
+cp -f /repo/tv-guide/app/main.py /app/main.py
+export SONARR_URL=$(bashio::config 'sonarr_url')
+export SONARR_API_KEY=$(bashio::config 'sonarr_api_key')
+export TMDB_API_KEY=$(bashio::config 'tmdb_api_key')
+export HA_URL=$(bashio::config 'ha_url')
+export HA_TOKEN=$(bashio::config 'ha_token')
+export FIRETV_ENTITY=$(bashio::config 'firetv_entity')
+export SONOS_ENTITY=$(bashio::config 'sonos_entity')
+bashio::log.info "Starting TV Guide..."
+exec uvicorn main:app --host 0.0.0.0 --port 8099 --app-dir /app

@@ -1,14 +1,23 @@
 #!/usr/bin/with-contenv bashio
+
+# ── Pull latest code from GitHub ──────────────────────────────────────────
 bashio::log.info "Pulling latest from GitHub..."
 cd /repo && git pull origin main 2>&1 | while read line; do bashio::log.info "  git: $line"; done
 cp -f /repo/tv-guide/app/static/index.html /app/static/index.html
 cp -f /repo/tv-guide/app/main.py /app/main.py
-export SONARR_URL=$(bashio::config 'sonarr_url')
-export SONARR_API_KEY=$(bashio::config 'sonarr_api_key')
-export TMDB_API_KEY=$(bashio::config 'tmdb_api_key')
-export HA_URL=$(bashio::config 'ha_url')
-export HA_TOKEN=$(bashio::config 'ha_token')
-export FIRETV_ENTITY=$(bashio::config 'firetv_entity')
-export SONOS_ENTITY=$(bashio::config 'sonos_entity')
-bashio::log.info "Starting TV Guide..."
+bashio::log.info "Code updated"
+
+# ── Read config and export env vars ───────────────────────────────────────
+export SONARR_URL="$(bashio::config 'sonarr_url')"
+export SONARR_API_KEY="$(bashio::config 'sonarr_api_key')"
+export TMDB_API_KEY="$(bashio::config 'tmdb_api_key')"
+export HA_URL="$(bashio::config 'ha_url')"
+export HA_TOKEN="$(bashio::config 'ha_token')"
+export FIRETV_ENTITY="$(bashio::config 'firetv_entity')"
+export SONOS_ENTITY="$(bashio::config 'sonos_entity')"
+
+bashio::log.info "Sonarr: ${SONARR_URL} (key set: $([ -n "$SONARR_API_KEY" ] && echo yes || echo NO))"
+bashio::log.info "TMDB key set: $([ -n "$TMDB_API_KEY" ] && echo yes || echo NO)"
+
+bashio::log.info "Starting TV Guide on port 8099..."
 exec uvicorn main:app --host 0.0.0.0 --port 8099 --app-dir /app

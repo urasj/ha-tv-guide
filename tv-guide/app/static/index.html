@@ -1051,6 +1051,17 @@ async function setService(showId, svc, btn) {
     // Re-render season episodes to show/hide watch buttons
     if (show?.episodes) renderEpisodes(show, currentSeason);
     toast(`Service set to ${SVCS[svc]||svc||'none'}`);
+    // Auto-scan to get the correct deep link for the new service
+    if (svc) {
+      const show2 = allShows.find(s => s.id === showId);
+      if (show2?.tvdbId) {
+        // Clear any stale deep link first
+        if (appData.deep_links) delete appData.deep_links[String(showId)];
+        if (show2) show2.deep_link = null;
+        // Scan in background - update UI when done
+        scanShow(showId);
+      }
+    }
   } catch(e) { toast('Failed to set service','error'); }
 }
 
@@ -1190,7 +1201,13 @@ async function scanShow(showId) {
       appData.services[String(showId)] = res.service;
       var showObj2 = allShows.find(s => s.id === showId);
       if (showObj2) showObj2.service = res.service;
-      toast(`✓ Found on ${SVCS[res.service]||res.service}`);
+      // Store deep link if returned
+      if (res.deep_link) {
+        if (!appData.deep_links) appData.deep_links = {};
+        appData.deep_links[String(showId)] = res.deep_link;
+        if (showObj2) showObj2.deep_link = res.deep_link;
+      }
+      toast(`✓ Found on ${SVCS[res.service]||res.service}${res.deep_link ? ' (direct link ready)' : ''}`);
       if (currentShowId === showId) {
         renderServiceButtons(showId);
         const show = allShows.find(s=>s.id===showId);

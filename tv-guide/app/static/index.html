@@ -144,10 +144,16 @@
   .row-scroll {
     display: flex; gap: 12px;
     overflow-x: auto;
+    overflow-y: visible;
     padding-bottom: 8px;
     scroll-snap-type: x mandatory;
     -ms-overflow-style: none; scrollbar-width: none;
+    touch-action: pan-x;
+    cursor: grab;
+    user-select: none;
+    -webkit-overflow-scrolling: touch;
   }
+  .row-scroll:active { cursor: grabbing; }
   .row-scroll::-webkit-scrollbar { display: none; }
 
   /* ── SHOW CARD ── */
@@ -628,6 +634,7 @@ async function loadShows() {
     appData.services = showServices;
     allShows = shows;
     render();
+  initDragScroll();
   } catch(e) {
     toast('Failed to load shows: ' + e.message, 'error');
     console.error('loadShows error:', e);
@@ -1026,14 +1033,18 @@ async function scanAll() {
   const btn = document.getElementById('btn-scan-all');
   btn.disabled = true;
   const scanToast = document.getElementById('scan-toast');
-  document.getElementById('scan-msg').textContent = 'Scanning all shows…';
+  document.getElementById('scan-msg').textContent = 'Refreshing shows…';
   scanToast.classList.add('show');
   try {
-    const res = await post('api/scan-all', { shows: allShows.map(s => ({id:s.id, tvdbId:s.tvdbId, title:s.title})) });
-    if (res.services) Object.assign(appData.services, res.services);
-    toast(`✓ Scanned ${Object.keys(res.services||{}).length} shows`);
+    // Always fetch fresh show list from Sonarr first to pick up newly added shows
+    const freshShows = await get('api/shows');
+    allShows = freshShows;
+    document.getElementById('scan-msg').textContent = `Scanning ${freshShows.length} shows…`;
+    const res = await post('api/scan-all', { shows: freshShows.map(s => ({id:s.id, tvdbId:s.tvdbId, title:s.title})) });
+    if (res.results) Object.assign(appData.services, res.results);
+    toast(`✓ Found streaming service for ${res.found||0} of ${res.scanned||0} shows`);
     await loadShows();
-  } catch(e) { toast('Scan failed','error'); }
+  } catch(e) { toast('Scan failed: ' + e.message, 'error'); }
   scanToast.classList.remove('show');
   btn.disabled = false;
 }
@@ -1048,6 +1059,28 @@ async function remote(key) {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeModal();
 });
+
+// ── Mouse drag scroll for rows ───────────────────────────────────────────
+function initDragScroll() {
+  document.querySelectorAll('.row-scroll').forEach(row => {
+    if (row._dragInit) return;
+    row._dragInit = true;
+    let isDown = false, startX, scrollLeft;
+    row.addEventListener('mousedown', e => {
+      isDown = true;
+      startX = e.pageX - row.offsetLeft;
+      scrollLeft = row.scrollLeft;
+    });
+    row.addEventListener('mouseleave', () => isDown = false);
+    row.addEventListener('mouseup', () => isDown = false);
+    row.addEventListener('mousemove', e => {
+      if (!isDown) return;
+      e.preventDefault();
+      const x = e.pageX - row.offsetLeft;
+      row.scrollLeft = scrollLeft - (x - startX) * 1.5;
+    });
+  });
+}
 
 // ── Init ───────────────────────────────────────────────────────────────────
 if (!window.__tvGuideLoaded) {

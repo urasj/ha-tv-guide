@@ -610,7 +610,8 @@ function toast(msg, type='') {
 
 // ── Load ───────────────────────────────────────────────────────────────────
 async function loadShows() {
-  document.getElementById('btn-refresh').textContent = '⟳';
+  var refreshBtn2 = document.getElementById('btn-refresh');
+  if (refreshBtn2) refreshBtn2.textContent = '⟳';
   try {
     const [status, shows] = await Promise.all([
       get('api/status'),
@@ -628,9 +629,11 @@ async function loadShows() {
     allShows = shows;
     render();
   } catch(e) {
-    toast('Failed to load shows', 'error');
+    toast('Failed to load shows: ' + e.message, 'error');
+    console.error('loadShows error:', e);
   }
-  document.getElementById('btn-refresh').textContent = '↻';
+  const refreshBtn = document.getElementById('btn-refresh');
+  if (refreshBtn) refreshBtn.textContent = '↻';
 }
 
 // ── Render ─────────────────────────────────────────────────────────────────
@@ -654,7 +657,8 @@ function getUnwatched(show) {
 }
 
 function render() {
-  document.getElementById('skeleton-row').style.display = 'none';
+  const skeletonRow = document.getElementById('skeleton-row');
+  if (skeletonRow) skeletonRow.style.display = 'none';
   const main = document.getElementById('main-content');
 
   if (!allShows.length) {

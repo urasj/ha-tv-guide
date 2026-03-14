@@ -124,7 +124,7 @@
   #hero-actions .btn { padding: 10px 22px; font-size: 14px; }
 
   /* ── MAIN ── */
-  main { padding: 0 32px 80px; }
+  main { padding: 0 32px 160px; }
 
   /* ── SECTION ROWS ── */
   .section { margin-bottom: 40px; }
@@ -591,22 +591,69 @@
   @keyframes shimmer { to { background-position: -200% 0; } }
 
   /* ── REMOTE BAR ── */
+  /* ── Responsive ── */
+  * { box-sizing: border-box; }
+  :root {
+    --card-w: clamp(130px, 15vw, 180px);
+    --card-h: clamp(195px, 22.5vw, 270px);
+  }
+  @media (max-width: 600px) {
+    nav { padding: 0 12px; }
+    main { padding: 0 12px 140px; }
+    #hero { height: 300px; }
+    #hero-content { padding: 60px 20px 20px; }
+    #hero-title { font-size: 32px; }
+    .modal { margin: 0; border-radius: 0; min-height: 100vh; }
+    .modal-hero { height: 200px; }
+    .modal-body { padding: 16px; }
+    .modal-title { font-size: 24px; }
+  }
+  @media (min-width: 601px) and (max-width: 1024px) {
+    main { padding: 0 20px 130px; }
+    #hero-content { padding: 80px 28px 28px; }
+  }
+
+  /* ── Remote bar ── */
   .remote-bar {
     position: fixed; bottom: 0; left: 0; right: 0; z-index: 150;
-    background: rgba(13,13,20,0.95); backdrop-filter: blur(10px);
+    background: rgba(13,13,20,0.97); backdrop-filter: blur(10px);
     border-top: 1px solid var(--border);
-    display: flex; align-items: center; justify-content: center; gap: 8px;
-    padding: 10px 32px;
+    padding: 8px 16px 10px;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .remote-row {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    flex-wrap: wrap;
   }
   .remote-btn {
-    width: 40px; height: 40px; border-radius: 50%;
+    width: 48px; height: 48px; border-radius: 50%;
     border: 1px solid var(--border);
     background: var(--surface2); color: var(--text);
-    font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center;
-    transition: all 0.15s;
+    font-size: 18px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s; flex-shrink: 0;
   }
-  .remote-btn:hover { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.2); }
-  .remote-sep { width: 1px; height: 24px; background: var(--border); margin: 0 4px; }
+  .remote-btn:hover { background: rgba(255,255,255,0.14); border-color: rgba(255,255,255,0.25); }
+  .remote-btn:active { transform: scale(0.92); }
+  .remote-btn.ok-btn {
+    width: 54px; height: 54px; font-size: 12px; font-weight: 700;
+    background: var(--surface); border-color: rgba(255,255,255,0.25);
+  }
+  .remote-btn.active-btn { background: var(--accent2); border-color: var(--accent2); color: #111; }
+  .remote-sep { width: 1px; height: 28px; background: var(--border); margin: 0 2px; }
+  .remote-label {
+    font-size: 9px; font-weight: 600; letter-spacing: 0.8px;
+    text-transform: uppercase; color: var(--muted);
+    text-align: center; width: 100%;
+  }
+  .sonos-vol {
+    display: flex; align-items: center; gap: 6px;
+  }
+  .vol-bar-wrap {
+    flex: 1; max-width: 120px;
+    height: 4px; background: var(--surface2); border-radius: 2px; overflow: hidden;
+  }
+  .vol-bar { height: 100%; background: var(--text); border-radius: 2px; transition: width 0.2s; }
 </style>
 </head>
 <body>
@@ -641,22 +688,37 @@
 
 <!-- Remote bar -->
 <div class="remote-bar">
-  <button class="remote-btn" onclick="remote('KEYCODE_DPAD_UP')" title="Up">▲</button>
-  <button class="remote-btn" onclick="remote('KEYCODE_DPAD_DOWN')" title="Down">▼</button>
-  <button class="remote-btn" onclick="remote('KEYCODE_DPAD_LEFT')" title="Left">◀</button>
-  <button class="remote-btn" onclick="remote('KEYCODE_DPAD_RIGHT')" title="Right">▶</button>
-  <button class="remote-btn" onclick="remote('KEYCODE_DPAD_CENTER')" title="OK" style="background:var(--surface);border-color:rgba(255,255,255,0.2);font-size:11px;font-weight:600;">OK</button>
-  <div class="remote-sep"></div>
-  <button class="remote-btn" onclick="remote('KEYCODE_BACK')" title="Back">↩</button>
-  <button class="remote-btn" onclick="remote('KEYCODE_HOME')" title="Home">⌂</button>
-  <div class="remote-sep"></div>
-  <button class="remote-btn" onclick="remote('KEYCODE_MEDIA_PLAY_PAUSE')" title="Play/Pause">⏯</button>
-  <button class="remote-btn" onclick="remote('KEYCODE_MEDIA_REWIND')" title="Rewind">⏪</button>
-  <button class="remote-btn" onclick="remote('KEYCODE_MEDIA_FAST_FORWARD')" title="FF">⏩</button>
-  <div class="remote-sep"></div>
-  <button class="remote-btn" onclick="remote('KEYCODE_VOLUME_UP')" title="Vol+">🔊</button>
-  <button class="remote-btn" onclick="remote('KEYCODE_VOLUME_DOWN')" title="Vol-">🔉</button>
-  <button class="remote-btn" onclick="remote('KEYCODE_VOLUME_MUTE')" title="Mute">🔇</button>
+  <!-- Row 1: Fire TV controls -->
+  <div class="remote-row">
+    <span class="remote-label" style="width:auto;margin-right:4px;">🔥 Fire TV</span>
+    <div class="remote-sep"></div>
+    <button class="remote-btn" onclick="remote('KEYCODE_DPAD_UP')" title="Up">▲</button>
+    <button class="remote-btn" onclick="remote('KEYCODE_DPAD_DOWN')" title="Down">▼</button>
+    <button class="remote-btn" onclick="remote('KEYCODE_DPAD_LEFT')" title="Left">◀</button>
+    <button class="remote-btn" onclick="remote('KEYCODE_DPAD_RIGHT')" title="Right">▶</button>
+    <button class="remote-btn ok-btn" onclick="remote('KEYCODE_DPAD_CENTER')" title="OK">OK</button>
+    <div class="remote-sep"></div>
+    <button class="remote-btn" onclick="remote('KEYCODE_BACK')" title="Back">↩</button>
+    <button class="remote-btn" onclick="remote('KEYCODE_HOME')" title="Home">⌂</button>
+    <div class="remote-sep"></div>
+    <button class="remote-btn" onclick="remote('KEYCODE_MEDIA_PLAY_PAUSE')" title="Play/Pause">⏯</button>
+    <button class="remote-btn" onclick="remote('KEYCODE_MEDIA_REWIND')" title="Rewind">⏪</button>
+    <button class="remote-btn" onclick="remote('KEYCODE_MEDIA_FAST_FORWARD')" title="FF">⏩</button>
+  </div>
+  <!-- Row 2: Sonos controls -->
+  <div class="remote-row">
+    <span class="remote-label" style="width:auto;margin-right:4px;">🔊 Sonos</span>
+    <div class="remote-sep"></div>
+    <button class="remote-btn" onclick="sonosCmd('volume_down')" title="Vol-">🔉</button>
+    <div class="sonos-vol">
+      <div class="vol-bar-wrap"><div class="vol-bar" id="vol-bar" style="width:36%"></div></div>
+    </div>
+    <button class="remote-btn" onclick="sonosCmd('volume_up')" title="Vol+">🔊</button>
+    <button class="remote-btn" id="btn-mute" onclick="sonosCmd('mute')" title="Mute">🔇</button>
+    <div class="remote-sep"></div>
+    <button class="remote-btn" id="btn-speech" onclick="sonosCmd('speech_enhancement')" title="Speech Enhancement" style="font-size:13px;font-weight:600;">SE</button>
+    <button class="remote-btn" id="btn-night" onclick="sonosCmd('night_mode')" title="Night Sound" style="font-size:16px;">🌙</button>
+  </div>
 </div>
 
 <!-- Show modal -->
@@ -1271,10 +1333,61 @@ async function scanAll() {
   btn.disabled = false;
 }
 
-// ── Remote ─────────────────────────────────────────────────────────────────
+// ── Fire TV Remote ──────────────────────────────────────────────────────────
 async function remote(key) {
   try { await post('api/firetv/command', { command: key }); }
   catch(e) { toast('Remote error','error'); }
+}
+
+// ── Sonos ────────────────────────────────────────────────────────────────────
+var sonosState = { volume: 0.36, muted: false, speech: false, night: false };
+
+async function sonosLoadState() {
+  try {
+    const s = await get('api/sonos/state');
+    sonosState = { volume: s.volume||0, muted: s.muted||false, speech: s.speech_enhancement||false, night: s.night_mode||false };
+    updateSonosUI();
+  } catch(e) {}
+}
+
+function updateSonosUI() {
+  const bar = document.getElementById('vol-bar');
+  if (bar) bar.style.width = Math.round(sonosState.volume * 100) + '%';
+  const btnMute = document.getElementById('btn-mute');
+  if (btnMute) btnMute.classList.toggle('active-btn', sonosState.muted);
+  const btnSpeech = document.getElementById('btn-speech');
+  if (btnSpeech) btnSpeech.classList.toggle('active-btn', sonosState.speech);
+  const btnNight = document.getElementById('btn-night');
+  if (btnNight) btnNight.classList.toggle('active-btn', sonosState.night);
+}
+
+async function sonosCmd(cmd) {
+  try {
+    if (cmd === 'volume_up') {
+      sonosState.volume = Math.min(1.0, Math.round((sonosState.volume + 0.05) * 100) / 100);
+      updateSonosUI();
+      await post('api/sonos/command', { command: cmd, current: sonosState.volume });
+    } else if (cmd === 'volume_down') {
+      sonosState.volume = Math.max(0.0, Math.round((sonosState.volume - 0.05) * 100) / 100);
+      updateSonosUI();
+      await post('api/sonos/command', { command: cmd, current: sonosState.volume });
+    } else if (cmd === 'mute') {
+      const newMuted = !sonosState.muted;
+      sonosState.muted = newMuted;
+      updateSonosUI();
+      await post('api/sonos/command', { command: cmd, muted: !newMuted }); // send OLD state so backend toggles
+    } else if (cmd === 'speech_enhancement') {
+      const newSpeech = !sonosState.speech;
+      sonosState.speech = newSpeech;
+      updateSonosUI();
+      await post('api/sonos/command', { command: cmd, state: newSpeech }); // send NEW desired state
+    } else if (cmd === 'night_mode') {
+      const newNight = !sonosState.night;
+      sonosState.night = newNight;
+      updateSonosUI();
+      await post('api/sonos/command', { command: cmd, state: newNight }); // send NEW desired state
+    }
+  } catch(e) { toast('Sonos error: ' + e.message, 'error'); }
 }
 
 // ── Keyboard ───────────────────────────────────────────────────────────────
@@ -1308,6 +1421,7 @@ function initDragScroll() {
 if (!window.__tvGuideLoaded) {
   window.__tvGuideLoaded = true;
   loadShows();
+  sonosLoadState();
 }
 </script>
 </body>

@@ -490,14 +490,19 @@ async def firetv_command(request: Request):
 @app.get("/api/sonos/state")
 async def sonos_state():
     async with httpx.AsyncClient() as client:
-        r = await client.get(f"{HA_URL}/api/states/{SONOS_ENT}",
-            headers={"Authorization": f"Bearer {HA_TOKEN}"}, timeout=10)
+        headers = {"Authorization": f"Bearer {HA_TOKEN}"}
+        r = await client.get(f"{HA_URL}/api/states/{SONOS_ENT}", headers=headers, timeout=10)
         s = r.json()
         attrs = s.get("attributes", {})
+        # Fetch speech enhancement and night sound switch states
+        se_r = await client.get(f"{HA_URL}/api/states/switch.living_room_speech_enhancement", headers=headers, timeout=10)
+        ns_r = await client.get(f"{HA_URL}/api/states/switch.living_room_night_sound", headers=headers, timeout=10)
         return {
             "state": s.get("state"),
             "volume": attrs.get("volume_level", 0),
             "muted": attrs.get("is_volume_muted", False),
+            "speech_enhancement": se_r.json().get("state") == "on" if se_r.status_code == 200 else False,
+            "night_mode": ns_r.json().get("state") == "on" if ns_r.status_code == 200 else False,
         }
 
 @app.post("/api/sonos/command")
@@ -506,13 +511,21 @@ async def sonos_command(request: Request):
     cmd = body.get("command")
     async with httpx.AsyncClient() as client:
         if cmd == "volume_up":
-            vol = min(1.0, float(body.get("current", 0.3)) + 0.05)
-            await ha_call(client, "media_player", "volume_set", {"entity_id": SONOS_ENT, "volume_level": round(vol, 2)})
+            vol = round(min(1.0, float(body.get("current", 0.3))), 2)
+            await ha_call(client, "media_player", "volume_set", {"entity_id": SONOS_ENT, "volume_level": vol})
         elif cmd == "volume_down":
-            vol = max(0.0, float(body.get("current", 0.3)) - 0.05)
-            await ha_call(client, "media_player", "volume_set", {"entity_id": SONOS_ENT, "volume_level": round(vol, 2)})
+            vol = round(max(0.0, float(body.get("current", 0.3))), 2)
+            await ha_call(client, "media_player", "volume_set", {"entity_id": SONOS_ENT, "volume_level": vol})
         elif cmd == "mute":
+            # body.muted is current state, we want to toggle so pass NOT current
             await ha_call(client, "media_player", "volume_mute", {"entity_id": SONOS_ENT, "is_volume_muted": not body.get("muted", False)})
+        elif cmd == "speech_enhancement":
+            # body.state is the NEW desired state
+            svc = "turn_on" if body.get("state", False) else "turn_off"
+            await ha_call(client, "switch", svc, {"entity_id": "switch.living_room_speech_enhancement"})
+        elif cmd == "night_mode":
+            svc = "turn_on" if body.get("state", False) else "turn_off"
+            await ha_call(client, "switch", svc, {"entity_id": "switch.living_room_night_sound"})
     return {"ok": True}
 
 if __name__ == "__main__":

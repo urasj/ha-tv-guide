@@ -748,11 +748,16 @@ async function loadShows() {
     var SVCS_LABELS = status.services || {};
     // Build per-show service map from shows array
     var showServices = {};
-    shows.forEach(s => { if (s.service) showServices[String(s.id)] = s.service; });
+    var showDeepLinks = {};
+    shows.forEach(s => {
+      if (s.service) showServices[String(s.id)] = s.service;
+      if (s.deep_link) showDeepLinks[String(s.id)] = s.deep_link;
+    });
     // profiles come from status.profiles
-    appData = { watched:{}, services: showServices, deep_links:{}, profiles:{}, ...status, shows };
-    // Restore per-show services (status.services overwrites with labels)
+    appData = { watched:{}, services: showServices, deep_links: showDeepLinks, profiles:{}, ...status, shows };
+    // Restore per-show data (status.services overwrites with labels dict)
     appData.services = showServices;
+    appData.deep_links = showDeepLinks;
     allShows = shows;
     render();
   initDragScroll();

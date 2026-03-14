@@ -67,10 +67,10 @@ TMDB_SVC_MAP = {
 LAUNCH_TIMING = {
     "default":   {"pre_profile": 7,  "post_profile": 15},
     "discovery": {"pre_profile": 7,  "post_profile": 15},
-    "max":       {"pre_profile": 6,  "post_profile": 12},
+    "max":       {"pre_profile": 6,  "post_profile": 15},
     "netflix":   {"pre_profile": 5,  "post_profile": 10},
     "hulu":      {"pre_profile": 5,  "post_profile": 10},
-    "disney":    {"pre_profile": 6,  "post_profile": 12},
+    "disney":    {"pre_profile": 7,  "post_profile": 18},
     "peacock":   {"pre_profile": 6,  "post_profile": 12},
 }
 
@@ -417,7 +417,8 @@ async def firetv_launch(request: Request):
         else:
             await ha_adb(client, f"monkey -p {pkg} 1")
 
-        if needs_profile:
+        # profile_index=-1 = handoff mode: just launch app, user handles profile/PIN
+        if profile_index >= 0 and needs_profile:
             await asyncio.sleep(timing["pre_profile"])
             for _ in range(profile_index):
                 await ha_adb(client, "input keyevent KEYCODE_DPAD_RIGHT")
@@ -425,12 +426,32 @@ async def firetv_launch(request: Request):
             await ha_adb(client, "input keyevent KEYCODE_DPAD_CENTER")
             if deep_link:
                 await asyncio.sleep(timing["post_profile"])
-                await ha_adb(client, f'am start -a android.intent.action.VIEW -d "{deep_link}" {pkg}')
-        elif deep_link:
+                await ha_adb(client, f'am start -a android.intent.action.VIEW -d "{deep_link}" -n {component} --activity-clear-task' if component else f'am start -a android.intent.action.VIEW -d "{deep_link}" {pkg}')
+        elif profile_index >= 0 and deep_link:
             await asyncio.sleep(timing["pre_profile"])
-            await ha_adb(client, f'am start -a android.intent.action.VIEW -d "{deep_link}" {pkg}')
+            await ha_adb(client, f'am start -a android.intent.action.VIEW -d "{deep_link}" -n {component} --activity-clear-task' if component else f'am start -a android.intent.action.VIEW -d "{deep_link}" {pkg}')
 
     return {"ok": True, "service": svc, "package": pkg, "profile": profile_name, "deep_link": deep_link}
+
+
+@app.post("/api/firetv/deeplink")
+async def firetv_deeplink(request: Request):
+    body = await request.json()
+    svc = body.get("service")
+    show_id = body.get("showId")
+    launch = APP_LAUNCH.get(svc)
+    if not launch:
+        raise HTTPException(400, f"Unknown service: {svc}")
+    pkg = launch[0]
+    deep_link = None
+    if show_id:
+        d = load_data()
+        deep_link = d.get("deep_links", {}).get(str(show_id))
+    if not deep_link:
+        raise HTTPException(404, "No deep link for this show — run Scan first")
+    async with httpx.AsyncClient() as client:
+        await ha_adb(client, f'am start -a android.intent.action.VIEW -d "{deep_link}" -n {component} --activity-clear-task' if component else f'am start -a android.intent.action.VIEW -d "{deep_link}" {pkg}')
+    return {"ok": True, "deep_link": deep_link}
 
 @app.post("/api/firetv/command")
 async def firetv_command(request: Request):

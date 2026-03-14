@@ -565,6 +565,984 @@
 <div id="toast-container"></div>
 
 <script>
+if (window.__tvGuideLoaded) { console.log('TV Guide: already loaded, skipping'); }
+else {
+window.__tvGuideLoaded = true;
+// ── Constants ──────────────────────────────────────────────────────────────
+var SVCS = {
+  netflix:'Netflix', hulu:'Hulu', disney:'Disney+', max:'Max',
+  peacock:'Peacock', discovery:'Discovery+', prime:'Prime Video',
+  apple:'Apple TV+', paramount:'Paramount+', plex:'Plex', tubi:'Tubi',
+  pluto:'Pluto TV', youtube:'YouTube'
+};
+var SVC_COLORS = {
+  netflix:'#e50914', hulu:'#1ce783', disney:'#113ccf', max:'#002be7',
+  peacock:'#ffd60a', discovery:'#0459ff', prime:'#00a8e1',
+  apple:'#a2aaad', paramount:'#0064ff', plex:'#e5a00d',
+  tubi:'#fa4500', pluto:'#fff', youtube:'#ff0000'
+};
+
+// ── State ──────────────────────────────────────────────────────────────────
+var appData = { shows:[], watched:{}, services:{}, deep_links:{}, profiles:{} };
+var allShows = [];
+var currentShowId = null;
+var currentSeason = null;
+var _profCb = null;
+
+// ── API helpers ────────────────────────────────────────────────────────────
+async function api(method, path, body) {
+  const r = await fetch(path, {
+    method, headers:{'Content-Type':'application/json'},
+    body: body ? JSON.stringify(body) : undefined
+  });
+  if (!r.ok) throw new Error(`${r.status}`);
+  return r.json().catch(()=>({}));
+}
+const get = p => api('GET',p);
+const post = (p,b) => api('POST',p,b);
+const del = p => api('DELETE',p);
+
+// ── Toast ──────────────────────────────────────────────────────────────────
+function toast(msg, type='') {
+  const el = document.createElement('div');
+  el.className = 'toast' + (type ? ' '+type : '');
+  el.textContent = msg;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+// ── Load ───────────────────────────────────────────────────────────────────
+async function loadShows() {
+  document.getElementById('btn-refresh').textContent = '⟳';
+  try {
+    const [status, shows] = await Promise.all([
+      get('api/status'),
+      get('api/shows')
+    ]);
+    // profiles come from status.profiles if backend exposes them
+    appData = { watched:{}, services:{}, deep_links:{}, profiles:{}, ...status, shows };
+    allShows = shows;
+    render();
+  } catch(e) {
+    toast('Failed to load shows', 'error');
+  }
+  document.getElementById('btn-refresh').textContent = '↻';
+}
+
+// ── Render ─────────────────────────────────────────────────────────────────
+function getPoster(show) {
+  const images = show.images || [];
+  const poster = images.find(i=>i.coverType==='poster');
+  return poster?.remoteUrl || poster?.url || null;
+}
+function getFanart(show) {
+  const images = show.images || [];
+  const fanart = images.find(i=>i.coverType==='fanart') || images.find(i=>i.coverType==='banner');
+  return fanart?.remoteUrl || fanart?.url || null;
+}
+function getSvc(sid) {
+  return appData.services?.[String(sid)] || null;
+}
+function getUnwatched(show) {
+  const watched = appData.watched?.[show.id] || [];
+  const eps = show.episodes || [];
+  return eps.filter(e => e.airDateUtc && new Date(e.airDateUtc) <= new Date() && !watched.includes(e.id));
+}
+
+function render() {
+  document.getElementById('skeleton-row').style.display = 'none';
+  const main = document.getElementById('main-content');
+
+  if (!allShows.length) {
+    main.innerHTML = `<div class="empty-state">
+      <div class="empty-icon">📺</div>
+      <div class="empty-title">No Shows Yet</div>
+      <div class="empty-sub">Connect Sonarr to start tracking your shows.</div>
+    </div>`;
+    return;
+  }
+
+  // Split into groups
+  const withService = allShows.filter(s => getSvc(s.id));
+  const noService = allShows.filter(s => !getSvc(s.id));
+  const continuing = allShows.filter(s => s.status === 'continuing');
+  const ended = allShows.filter(s => s.status === 'ended');
+
+  // Hero: pick first continuing show with fanart
+  const heroShow = continuing.find(s=>getFanart(s)) || allShows.find(s=>getFanart(s)) || allShows[0];
+  if (heroShow) renderHero(heroShow);
+
+  main.innerHTML = '';
+
+  // Sections
+  const sections = [
+    { title: 'Continue Watching', shows: continuing },
+    { title: 'All Shows', shows: allShows },
+    { title: 'Ended', shows: ended },
+  ].filter(s => s.shows.length > 0);
+
+  // Dedupe: only show each show in first matching section
+  const seen = new Set();
+  for (const sec of sections) {
+    const unique = sec.shows.filter(s => !seen.has(s.id));
+    unique.forEach(s => seen.add(s.id));
+    if (!unique.length) continue;
+    main.appendChild(buildSection(sec.title, unique));
+  }
+}
+
+function renderHero(show) {
+  const fanart = getFanart(show) || getPoster(show);
+  const svc = getSvc(show.id);
+  document.getElementById('hero-bg').style.backgroundImage = fanart ? `url(${fanart})` : 'none';
+  document.getElementById('hero-title').textContent = show.title;
+  document.getElementById('hero-overview').textContent = show.overview || '';
+  
+  const unwatched = getUnwatched(show);
+  const meta = document.getElementById('hero-meta');
+  meta.innerHTML = `
+    <span>${show.network || ''}</span>
+    ${show.year ? `<span>· ${show.year}</span>` : ''}
+    ${show.status ? `<span>· ${show.status}</span>` : ''}
+    ${unwatched.length ? `<span style="color:var(--accent2)">· ${unwatched.length} unwatched</span>` : ''}
+  `;
+
+  const actions = document.getElementById('hero-actions');
+  actions.innerHTML = `
+    <button class="btn btn-primary" onclick="openModal(${show.id})">▶ View Episodes</button>
+    ${svc ? `<button class="btn btn-ghost" onclick="launchShow(${show.id},'${svc}')">📺 Watch on ${SVCS[svc]||svc}</button>` : ''}
+  `;
+}
+
+function buildSection(title, shows) {
+  const sec = document.createElement('div');
+  sec.className = 'section';
+  sec.innerHTML = `
+    <div class="section-header">
+      <div class="section-title">${title}</div>
+      <div class="section-count">${shows.length}</div>
+    </div>
+    <div class="row-scroll" id="row-${title.replace(/\s+/g,'-')}"></div>
+  `;
+  const row = sec.querySelector('.row-scroll');
+  shows.forEach(show => row.appendChild(buildCard(show)));
+  return sec;
+}
+
+function buildCard(show) {
+  const card = document.createElement('div');
+  card.className = 'show-card';
+  card.onclick = () => openModal(show.id);
+
+  const poster = getPoster(show);
+  const svc = getSvc(show.id);
+  const unwatched = getUnwatched(show);
+  const svcColor = svc ? (SVC_COLORS[svc] || '#fff') : null;
+
+  if (poster) {
+    card.innerHTML = `<img src="${poster}" alt="${show.title}" loading="lazy">`;
+  } else {
+    card.innerHTML = `<div class="card-no-img">
+      <div class="card-no-img-icon">📺</div>
+      <div class="card-no-img-title">${show.title}</div>
+    </div>`;
+  }
+
+  if (unwatched.length > 0) {
+    card.innerHTML += `<div class="card-unwatched-badge">${unwatched.length > 9 ? '9+' : unwatched.length}</div>`;
+  }
+
+  card.innerHTML += `<div class="show-card-overlay">
+    <div class="card-title">${show.title}</div>
+    <div class="card-meta">
+      ${show.network ? `<span>${show.network}</span>` : ''}
+      ${svc ? `<span class="card-svc" style="color:${svcColor}">${SVCS[svc]||svc}</span>` : ''}
+    </div>
+    ${show.nextAiring ? `<div class="card-next-ep">Next: ${new Date(show.nextAiring).toLocaleDateString()}</div>` : ''}
+  </div>`;
+
+  return card;
+}
+
+// ── Modal ──────────────────────────────────────────────────────────────────
+async function openModal(showId) {
+  currentShowId = showId;
+  const show = allShows.find(s=>s.id===showId);
+  if (!show) return;
+
+  document.getElementById('show-modal').classList.add('open');
+  document.body.style.overflow = 'hidden';
+
+  const fanart = getFanart(show);
+  const poster = getPoster(show);
+  const svc = getSvc(showId);
+
+  document.getElementById('modal-fanart').src = fanart || poster || '';
+  document.getElementById('modal-poster').src = poster || '';
+  document.getElementById('modal-poster').style.display = poster ? 'block' : 'none';
+  document.getElementById('modal-title').textContent = show.title;
+  document.getElementById('modal-overview').textContent = show.overview || '';
+
+  // Meta
+  const meta = document.getElementById('modal-meta');
+  meta.innerHTML = [
+    show.network, show.year, show.status,
+    show.genres?.join(', ')
+  ].filter(Boolean).map(m=>`<span>${m}</span>`).join('');
+
+  // Actions
+  const actions = document.getElementById('modal-actions');
+  actions.innerHTML = svc
+    ? `<button class="btn btn-primary" onclick="launchShow(${showId},'${svc}')">▶ Watch on ${SVCS[svc]||svc}</button>
+       <button class="btn btn-ghost" onclick="scanShow(${showId})">🔍 Scan</button>`
+    : `<button class="btn btn-ghost" onclick="scanShow(${showId})">🔍 Find Streaming Service</button>`;
+
+  // Service override
+  renderServiceButtons(showId);
+
+  // Load episodes
+  try {
+    const eps = await get(`api/shows/${showId}/episodes`);
+    show.episodes = eps;
+    renderSeasons(show);
+  } catch {
+    document.getElementById('ep-list').innerHTML = '<div style="color:var(--muted);font-size:13px;padding:10px 0">No episode data available</div>';
+  }
+}
+
+function renderServiceButtons(showId) {
+  const svc = getSvc(showId);
+  const override = document.getElementById('service-override');
+  override.innerHTML = `<span class="service-override-label">Service:</span>` +
+    Object.entries(SVCS).map(([k,v]) =>
+      `<button class="svc-btn${svc===k?' active':''}" onclick="setService(${showId},'${k}',this)">${v}</button>`
+    ).join('') +
+    (svc ? `<button class="svc-btn" onclick="setService(${showId},'',this)">✕ Clear</button>` : '');
+}
+
+function renderSeasons(show) {
+  const eps = show.episodes || [];
+  const seasons = [...new Set(eps.map(e=>e.seasonNumber))].filter(s=>s>0).sort((a,b)=>a-b);
+  if (!seasons.length) {
+    document.getElementById('season-tabs').innerHTML = '';
+    document.getElementById('ep-list').innerHTML = '<div style="color:var(--muted);font-size:13px;padding:10px 0">No episodes found</div>';
+    return;
+  }
+
+  // Default to latest season
+  if (!currentSeason || !seasons.includes(currentSeason)) {
+    currentSeason = seasons[seasons.length-1];
+  }
+
+  const tabs = document.getElementById('season-tabs');
+  tabs.innerHTML = seasons.map(s =>
+    `<button class="season-tab${s===currentSeason?' active':''}" onclick="selectSeason(${show.id},${s})">
+      Season ${s}
+    </button>`
+  ).join('');
+
+  renderEpisodes(show, currentSeason);
+}
+
+function selectSeason(showId, season) {
+  currentSeason = season;
+  const show = allShows.find(s=>s.id===showId);
+  document.querySelectorAll('.season-tab').forEach(t => {
+    t.classList.toggle('active', t.textContent.trim() === `Season ${season}`);
+  });
+  renderEpisodes(show, season);
+}
+
+function renderEpisodes(show, season) {
+  const eps = (show.episodes||[]).filter(e=>e.seasonNumber===season).sort((a,b)=>a.episodeNumber-b.episodeNumber);
+  const watched = appData.watched?.[show.id] || [];
+  const svc = getSvc(show.id);
+  const list = document.getElementById('ep-list');
+
+  if (!eps.length) {
+    list.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:10px 0">No episodes in this season</div>';
+    return;
+  }
+
+  list.innerHTML = eps.map(ep => {
+    const isWatched = watched.includes(ep.id);
+    const airDate = ep.airDateUtc ? new Date(ep.airDateUtc).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : 'TBA';
+    const hasFired = ep.airDateUtc && new Date(ep.airDateUtc) <= new Date();
+    return `<div class="ep-row${isWatched?' watched':''}" id="ep-${ep.id}">
+      <div class="ep-num">${ep.episodeNumber}</div>
+      <div class="ep-info">
+        <div class="ep-name">${ep.title || `Episode ${ep.episodeNumber}`}</div>
+        <div class="ep-air">${airDate}</div>
+      </div>
+      ${hasFired ? `<button class="ep-tick${isWatched?' on':''}" onclick="toggleWatched(${show.id},${ep.id},${isWatched})" title="${isWatched?'Mark unwatched':'Mark watched'}">✓</button>` : ''}
+      ${svc && hasFired ? `<button class="ep-watch" onclick="launchShow(${show.id},'${svc}',${ep.id})">▶ Watch</button>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function closeModal() {
+  document.getElementById('show-modal').classList.remove('open');
+  document.body.style.overflow = '';
+  currentShowId = null;
+  currentSeason = null;
+}
+
+function maybeCloseModal(e) {
+  if (e.target === document.getElementById('show-modal')) closeModal();
+}
+
+// ── Service override ───────────────────────────────────────────────────────
+async function setService(showId, svc, btn) {
+  try {
+    await post(`api/shows/${showId}/service`, { service: svc });
+    if (!appData.services) appData.services = {};
+    appData.services[String(showId)] = svc || undefined;
+    renderServiceButtons(showId);
+    // Re-render actions
+    const show = allShows.find(s=>s.id===showId);
+    const actions = document.getElementById('modal-actions');
+    actions.innerHTML = svc
+      ? `<button class="btn btn-primary" onclick="launchShow(${showId},'${svc}')">▶ Watch on ${SVCS[svc]||svc}</button>
+         <button class="btn btn-ghost" onclick="scanShow(${showId})">🔍 Scan</button>`
+      : `<button class="btn btn-ghost" onclick="scanShow(${showId})">🔍 Find Streaming Service</button>`;
+    // Re-render season episodes to show/hide watch buttons
+    if (show?.episodes) renderEpisodes(show, currentSeason);
+    toast(`Service set to ${SVCS[svc]||svc||'none'}`);
+  } catch(e) { toast('Failed to set service','error'); }
+}
+
+// ── Watched ────────────────────────────────────────────────────────────────
+async function toggleWatched(sid, epId, isWatched) {
+  if (isWatched) {
+    appData.watched[sid] = (appData.watched[sid]||[]).filter(e=>e!==epId);
+    await del(`api/shows/${sid}/watched/${epId}`);
+  } else {
+    if (!appData.watched[sid]) appData.watched[sid] = [];
+    appData.watched[sid].push(epId);
+    await post(`api/shows/${sid}/watched/${epId}`, {});
+  }
+  const row = document.getElementById(`ep-${epId}`);
+  if (row) {
+    row.classList.toggle('watched', !isWatched);
+    const btn = row.querySelector('.ep-tick');
+    if (btn) { btn.textContent='✓'; btn.classList.toggle('on', !isWatched); }
+  }
+}
+
+// ── Launch ─────────────────────────────────────────────────────────────────
+async function launchShow(sid, svc, epId) {
+  const profiles = appData.profiles?.[svc];
+  if (profiles && profiles.length > 1) {
+    showProfilePicker(svc, async(idx) => {
+      await doLaunch(svc, idx, sid);
+    });
+  } else {
+    await doLaunch(svc, 0, sid);
+  }
+}
+
+async function doLaunch(svc, profileIndex, showId) {
+  toast(`🔥 Launching ${SVCS[svc]||svc}…`);
+  try {
+    const res = await post('api/firetv/launch', { service:svc, profileIndex, showId });
+    toast(`✓ ${res.deep_link ? 'Opening show on' : 'Launched'} ${SVCS[svc]||svc}`);
+    closeModal();
+  } catch(e) { toast('Launch failed: '+e.message,'error'); }
+}
+
+// ── Profile picker ─────────────────────────────────────────────────────────
+function showProfilePicker(svc, onSelect) {
+  _profCb = onSelect;
+  const profiles = appData.profiles?.[svc] || [];
+  const avatars = ['🧑','👧','🧔','👩','👦','🧓'];
+  const el = document.createElement('div');
+  el.className = 'prof-overlay';
+  el.id = 'prof-overlay';
+  el.innerHTML = `
+    <div class="prof-box">
+      <div class="prof-title">Who's watching?</div>
+      <div class="prof-app">${SVCS[svc]||svc}</div>
+      <div class="prof-grid">
+        ${profiles.map((p,i)=>`
+          <button class="prof-btn" onclick="selectProfile(${i})">
+            <span class="prof-avatar">${avatars[i%avatars.length]}</span>
+            <span>${p}</span>
+          </button>`).join('')}
+      </div>
+      <button class="prof-cancel" onclick="document.getElementById('prof-overlay').remove()">Cancel</button>
+    </div>`;
+  document.body.appendChild(el);
+}
+
+function selectProfile(i) {
+  document.getElementById('prof-overlay')?.remove();
+  if (_profCb) { _profCb(i); _profCb = null; }
+}
+
+// ── Scan ───────────────────────────────────────────────────────────────────
+async function scanShow(showId) {
+  const scanToast = document.getElementById('scan-toast');
+  const show = allShows.find(s=>s.id===showId);
+  document.getElementById('scan-msg').textContent = `Scanning ${show?.title||'show'}…`;
+  scanToast.classList.add('show');
+  try {
+    const res = await get(`api/shows/${showId}/scan-service`);
+    if (res.service) {
+      if (!appData.services) appData.services = {};
+      appData.services[String(showId)] = res.service;
+      toast(`✓ Found on ${SVCS[res.service]||res.service}`);
+      if (currentShowId === showId) {
+        renderServiceButtons(showId);
+        const show = allShows.find(s=>s.id===showId);
+        if (show?.episodes) renderEpisodes(show, currentSeason);
+        document.getElementById('modal-actions').innerHTML = 
+          `<button class="btn btn-primary" onclick="launchShow(${showId},'${res.service}')">▶ Watch on ${SVCS[res.service]||res.service}</button>
+           <button class="btn btn-ghost" onclick="scanShow(${showId})">🔍 Scan</button>`;
+      }
+    } else {
+      toast('Not found on any streaming service', 'error');
+    }
+  } catch(e) { toast('Scan failed','error'); }
+  scanToast.classList.remove('show');
+}
+
+async function scanAll() {
+  const btn = document.getElementById('btn-scan-all');
+  btn.disabled = true;
+  const scanToast = document.getElementById('scan-toast');
+  document.getElementById('scan-msg').textContent = 'Scanning all shows…';
+  scanToast.classList.add('show');
+  try {
+    const res = await post('api/scan-all', {});
+    if (res.services) Object.assign(appData.services, res.services);
+    toast(`✓ Scanned ${Object.keys(res.services||{}).length} shows`);
+    await loadShows();
+  } catch(e) { toast('Scan failed','error'); }
+  scanToast.classList.remove('show');
+  btn.disabled = false;
+}
+
+// ── Remote ─────────────────────────────────────────────────────────────────
+async function remote(key) {
+  try { await post('api/firetv/command', { command: key }); }
+  catch(e) { toast('Remote error','error'); }
+}
+
+// ── Keyboard ───────────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeModal();
+});
+
+// ── Init ───────────────────────────────────────────────────────────────────
+loadShows();
+} // end guard
+</script>
+</body>
+</html>  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: #ff0f1e; }
+  .btn-ghost { background: rgba(255,255,255,0.08); color: var(--text); border: 1px solid var(--border); }
+  .btn-ghost:hover { background: rgba(255,255,255,0.14); }
+  .btn-icon { padding: 7px 10px; font-size: 16px; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ── HERO ── */
+  #hero {
+    position: relative;
+    height: 520px;
+    overflow: hidden;
+    margin-bottom: 8px;
+  }
+  #hero-bg {
+    position: absolute; inset: 0;
+    background-size: cover; background-position: center 20%;
+    transition: opacity 0.6s;
+  }
+  #hero-bg::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: linear-gradient(
+      to right, rgba(10,10,15,0.95) 0%, rgba(10,10,15,0.6) 50%, transparent 100%
+    ),
+    linear-gradient(to top, rgba(10,10,15,1) 0%, transparent 40%);
+  }
+  #hero-content {
+    position: relative; z-index: 2;
+    padding: 120px 48px 48px;
+    max-width: 560px;
+  }
+  #hero-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    background: var(--accent);
+    border-radius: 3px;
+    font-size: 11px; font-weight: 600; letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  #hero-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 52px; line-height: 1;
+    margin-bottom: 12px;
+    text-shadow: 0 2px 20px rgba(0,0,0,0.5);
+  }
+  #hero-meta {
+    display: flex; gap: 12px; align-items: center;
+    font-size: 13px; color: var(--muted);
+    margin-bottom: 14px;
+  }
+  #hero-meta span { display: flex; align-items: center; gap: 4px; }
+  #hero-overview {
+    font-size: 14px; line-height: 1.6; color: rgba(232,232,240,0.8);
+    margin-bottom: 20px;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  #hero-actions { display: flex; gap: 10px; }
+  #hero-actions .btn { padding: 10px 22px; font-size: 14px; }
+
+  /* ── MAIN ── */
+  main { padding: 0 32px 80px; }
+
+  /* ── SECTION ROWS ── */
+  .section { margin-bottom: 40px; }
+  .section-header {
+    display: flex; align-items: center; gap: 16px;
+    margin-bottom: 16px;
+  }
+  .section-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 20px; letter-spacing: 1px; color: var(--text);
+  }
+  .section-count {
+    font-size: 12px; color: var(--muted);
+    background: var(--surface2); padding: 2px 8px; border-radius: 20px;
+  }
+
+  .row-scroll {
+    display: flex; gap: 12px;
+    overflow-x: auto;
+    padding-bottom: 8px;
+    scroll-snap-type: x mandatory;
+    -ms-overflow-style: none; scrollbar-width: none;
+  }
+  .row-scroll::-webkit-scrollbar { display: none; }
+
+  /* ── SHOW CARD ── */
+  .show-card {
+    flex-shrink: 0;
+    width: var(--card-w); height: var(--card-h);
+    border-radius: var(--radius);
+    overflow: hidden;
+    cursor: pointer;
+    position: relative;
+    scroll-snap-align: start;
+    transition: transform 0.2s, box-shadow 0.2s;
+    background: var(--surface2);
+  }
+  .show-card:hover {
+    transform: scale(1.06);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.7);
+    z-index: 2;
+  }
+  .show-card img {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: opacity 0.3s;
+  }
+  .show-card-overlay {
+    position: absolute; inset: 0;
+    background: linear-gradient(to top, rgba(0,0,0,0.95) 0%, transparent 55%);
+    opacity: 0;
+    transition: opacity 0.2s;
+    display: flex; flex-direction: column; justify-content: flex-end;
+    padding: 14px;
+    gap: 6px;
+  }
+  .show-card:hover .show-card-overlay { opacity: 1; }
+  .card-title {
+    font-size: 13px; font-weight: 600; line-height: 1.3;
+  }
+  .card-meta {
+    font-size: 11px; color: var(--muted);
+    display: flex; gap: 8px; align-items: center;
+  }
+  .card-svc {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 7px;
+    background: rgba(255,255,255,0.12);
+    border-radius: 3px;
+    font-size: 10px; font-weight: 600; letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .card-next-ep {
+    font-size: 10px; color: var(--accent2);
+    font-weight: 500;
+  }
+  .card-unwatched-badge {
+    position: absolute; top: 8px; right: 8px;
+    background: var(--accent);
+    color: #fff; font-size: 10px; font-weight: 700;
+    width: 20px; height: 20px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .card-no-img {
+    width: 100%; height: 100%;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 8px; padding: 16px; text-align: center;
+    background: var(--surface2);
+  }
+  .card-no-img-icon { font-size: 40px; opacity: 0.3; }
+  .card-no-img-title { font-size: 13px; font-weight: 500; opacity: 0.7; }
+
+  /* ── MODAL ── */
+  .modal-backdrop {
+    position: fixed; inset: 0; z-index: 200;
+    background: rgba(0,0,0,0.85);
+    display: flex; align-items: flex-start; justify-content: center;
+    padding: 40px 20px;
+    overflow-y: auto;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.2s;
+  }
+  .modal-backdrop.open { opacity: 1; pointer-events: all; }
+  .modal {
+    background: var(--surface);
+    border-radius: 10px;
+    width: 100%; max-width: 860px;
+    overflow: hidden;
+    transform: translateY(20px);
+    transition: transform 0.25s;
+    border: 1px solid var(--border);
+  }
+  .modal-backdrop.open .modal { transform: translateY(0); }
+  .modal-hero {
+    position: relative; height: 320px; overflow: hidden;
+  }
+  .modal-hero img {
+    width: 100%; height: 100%; object-fit: cover; object-position: center 20%;
+  }
+  .modal-hero::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: linear-gradient(to top, var(--surface) 0%, transparent 60%);
+  }
+  .modal-hero-info {
+    position: absolute; bottom: 24px; left: 28px; right: 28px;
+    z-index: 2;
+    display: flex; align-items: flex-end; gap: 20px;
+  }
+  .modal-poster {
+    width: 80px; height: 120px; border-radius: 4px;
+    object-fit: cover; flex-shrink: 0;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  }
+  .modal-hero-text { flex: 1; }
+  .modal-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 36px; line-height: 1;
+    margin-bottom: 6px;
+  }
+  .modal-meta {
+    display: flex; gap: 12px; flex-wrap: wrap;
+    font-size: 13px; color: var(--muted);
+    margin-bottom: 10px;
+  }
+  .modal-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .modal-close {
+    position: absolute; top: 16px; right: 16px; z-index: 3;
+    width: 34px; height: 34px;
+    background: rgba(0,0,0,0.6);
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    color: var(--text); font-size: 18px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+  }
+  .modal-close:hover { background: rgba(255,255,255,0.15); }
+
+  .modal-body { padding: 24px 28px 28px; }
+  .modal-overview {
+    font-size: 14px; line-height: 1.7; color: rgba(232,232,240,0.75);
+    margin-bottom: 20px;
+  }
+
+  /* Season tabs */
+  .season-tabs {
+    display: flex; gap: 6px; flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+  .season-tab {
+    padding: 5px 14px; border-radius: 4px;
+    border: 1px solid var(--border);
+    background: transparent; color: var(--muted);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px; cursor: pointer;
+    transition: all 0.15s;
+  }
+  .season-tab.active {
+    background: var(--accent); border-color: var(--accent);
+    color: #fff;
+  }
+  .season-tab:hover:not(.active) { border-color: rgba(255,255,255,0.2); color: var(--text); }
+
+  /* Service override */
+  .service-override {
+    display: flex; gap: 6px; flex-wrap: wrap;
+    margin-bottom: 20px; align-items: center;
+  }
+  .service-override-label { font-size: 12px; color: var(--muted); margin-right: 4px; }
+  .svc-btn {
+    padding: 4px 12px; border-radius: 3px;
+    border: 1px solid var(--border);
+    background: transparent; color: var(--muted);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .svc-btn.active { background: var(--accent2); border-color: var(--accent2); color: #111; }
+  .svc-btn:hover:not(.active) { border-color: rgba(255,255,255,0.25); color: var(--text); }
+
+  /* Episode list */
+  .ep-list { display: flex; flex-direction: column; gap: 2px; }
+  .ep-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 12px; border-radius: 5px;
+    transition: background 0.15s;
+    cursor: default;
+  }
+  .ep-row:hover { background: var(--surface2); }
+  .ep-row.watched { opacity: 0.45; }
+  .ep-num {
+    font-size: 12px; color: var(--muted); font-weight: 500;
+    min-width: 28px; text-align: right;
+  }
+  .ep-info { flex: 1; min-width: 0; }
+  .ep-name {
+    font-size: 14px; font-weight: 500;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .ep-air {
+    font-size: 11px; color: var(--muted); margin-top: 2px;
+  }
+  .ep-tick {
+    width: 26px; height: 26px; border-radius: 50%;
+    border: 1px solid var(--border);
+    background: transparent; color: var(--muted);
+    font-size: 12px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s; flex-shrink: 0;
+  }
+  .ep-tick.on { background: #1db954; border-color: #1db954; color: #fff; }
+  .ep-watch {
+    padding: 5px 12px; border-radius: 3px;
+    background: var(--accent); color: #fff;
+    border: none; font-family: 'DM Sans', sans-serif;
+    font-size: 12px; font-weight: 600; cursor: pointer;
+    transition: all 0.15s; flex-shrink: 0;
+  }
+  .ep-watch:hover { background: #ff0f1e; }
+
+  /* ── SCAN MODAL ── */
+  .scan-modal {
+    position: fixed; bottom: 24px; right: 24px; z-index: 300;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 18px;
+    font-size: 13px; color: var(--text);
+    min-width: 220px;
+    transform: translateY(100px);
+    opacity: 0;
+    transition: all 0.3s;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .scan-modal.show { transform: translateY(0); opacity: 1; }
+  .spin { animation: spin 1s linear infinite; display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── TOAST ── */
+  #toast-container {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    z-index: 500; display: flex; flex-direction: column; gap: 8px; align-items: center;
+    pointer-events: none;
+  }
+  .toast {
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text); padding: 10px 20px; border-radius: 6px;
+    font-size: 13px; font-weight: 500;
+    animation: toastIn 0.2s ease, toastOut 0.3s ease 2.5s forwards;
+  }
+  .toast.error { border-color: var(--accent); color: #ff6b6b; }
+  @keyframes toastIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:none; } }
+  @keyframes toastOut { to { opacity:0; transform:translateY(-10px); } }
+
+  /* ── PROFILE OVERLAY ── */
+  .prof-overlay {
+    position: fixed; inset: 0; z-index: 400;
+    background: rgba(0,0,0,0.9);
+    display: flex; align-items: center; justify-content: center;
+    animation: fadeIn 0.2s;
+  }
+  @keyframes fadeIn { from { opacity: 0; } }
+  .prof-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 32px 40px;
+    text-align: center;
+    max-width: 420px; width: 90%;
+  }
+  .prof-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 28px; letter-spacing: 1px; margin-bottom: 4px;
+  }
+  .prof-app { font-size: 13px; color: var(--muted); margin-bottom: 24px; }
+  .prof-grid {
+    display: flex; flex-wrap: wrap; gap: 14px;
+    justify-content: center; margin-bottom: 20px;
+  }
+  .prof-btn {
+    width: 88px; height: 88px;
+    border-radius: 6px; border: 2px solid var(--border);
+    background: var(--surface2);
+    color: var(--text); cursor: pointer;
+    font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 6px; transition: all 0.15s;
+  }
+  .prof-btn:hover { border-color: var(--accent); background: rgba(229,9,20,0.1); }
+  .prof-avatar { font-size: 30px; }
+  .prof-cancel { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 13px; }
+  .prof-cancel:hover { color: var(--text); }
+
+  /* ── EMPTY STATE ── */
+  .empty-state {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    min-height: 60vh; gap: 16px; color: var(--muted); text-align: center; padding: 40px;
+  }
+  .empty-icon { font-size: 64px; opacity: 0.3; }
+  .empty-title { font-family: 'Bebas Neue', sans-serif; font-size: 28px; letter-spacing: 1px; color: var(--text); }
+  .empty-sub { font-size: 14px; max-width: 300px; line-height: 1.6; }
+
+  /* ── LOADING ── */
+  .loading-row {
+    display: flex; gap: 12px; overflow: hidden; padding-bottom: 8px;
+  }
+  .skeleton-card {
+    flex-shrink: 0; width: var(--card-w); height: var(--card-h);
+    border-radius: var(--radius);
+    background: linear-gradient(90deg, var(--surface2) 25%, var(--surface) 50%, var(--surface2) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s infinite;
+  }
+  @keyframes shimmer { to { background-position: -200% 0; } }
+
+  /* ── REMOTE BAR ── */
+  .remote-bar {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 150;
+    background: rgba(13,13,20,0.95); backdrop-filter: blur(10px);
+    border-top: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 10px 32px;
+  }
+  .remote-btn {
+    width: 40px; height: 40px; border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--surface2); color: var(--text);
+    font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
+  }
+  .remote-btn:hover { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.2); }
+  .remote-sep { width: 1px; height: 24px; background: var(--border); margin: 0 4px; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-logo">TV Guide</div>
+  <div class="nav-actions">
+    <button class="btn btn-ghost" id="btn-scan-all" onclick="scanAll()">🔍 Scan All</button>
+    <button class="btn btn-ghost btn-icon" id="btn-refresh" onclick="loadShows()" title="Refresh">↻</button>
+  </div>
+</nav>
+
+<div id="hero">
+  <div id="hero-bg"></div>
+  <div id="hero-content">
+    <div id="hero-badge">Now Tracking</div>
+    <div id="hero-title">Loading…</div>
+    <div id="hero-meta"></div>
+    <div id="hero-overview"></div>
+    <div id="hero-actions"></div>
+  </div>
+</div>
+
+<main id="main-content">
+  <div class="loading-row" id="skeleton-row">
+    <div class="skeleton-card"></div><div class="skeleton-card"></div>
+    <div class="skeleton-card"></div><div class="skeleton-card"></div>
+    <div class="skeleton-card"></div><div class="skeleton-card"></div>
+    <div class="skeleton-card"></div><div class="skeleton-card"></div>
+  </div>
+</main>
+
+<!-- Remote bar -->
+<div class="remote-bar">
+  <button class="remote-btn" onclick="remote('KEYCODE_DPAD_UP')" title="Up">▲</button>
+  <button class="remote-btn" onclick="remote('KEYCODE_DPAD_DOWN')" title="Down">▼</button>
+  <button class="remote-btn" onclick="remote('KEYCODE_DPAD_LEFT')" title="Left">◀</button>
+  <button class="remote-btn" onclick="remote('KEYCODE_DPAD_RIGHT')" title="Right">▶</button>
+  <button class="remote-btn" onclick="remote('KEYCODE_DPAD_CENTER')" title="OK" style="background:var(--surface);border-color:rgba(255,255,255,0.2);font-size:11px;font-weight:600;">OK</button>
+  <div class="remote-sep"></div>
+  <button class="remote-btn" onclick="remote('KEYCODE_BACK')" title="Back">↩</button>
+  <button class="remote-btn" onclick="remote('KEYCODE_HOME')" title="Home">⌂</button>
+  <div class="remote-sep"></div>
+  <button class="remote-btn" onclick="remote('KEYCODE_MEDIA_PLAY_PAUSE')" title="Play/Pause">⏯</button>
+  <button class="remote-btn" onclick="remote('KEYCODE_MEDIA_REWIND')" title="Rewind">⏪</button>
+  <button class="remote-btn" onclick="remote('KEYCODE_MEDIA_FAST_FORWARD')" title="FF">⏩</button>
+  <div class="remote-sep"></div>
+  <button class="remote-btn" onclick="remote('KEYCODE_VOLUME_UP')" title="Vol+">🔊</button>
+  <button class="remote-btn" onclick="remote('KEYCODE_VOLUME_DOWN')" title="Vol-">🔉</button>
+  <button class="remote-btn" onclick="remote('KEYCODE_VOLUME_MUTE')" title="Mute">🔇</button>
+</div>
+
+<!-- Show modal -->
+<div class="modal-backdrop" id="show-modal" onclick="maybeCloseModal(event)">
+  <div class="modal" id="modal-inner">
+    <div class="modal-hero">
+      <img id="modal-fanart" src="" alt="">
+      <button class="modal-close" onclick="closeModal()">✕</button>
+      <div class="modal-hero-info">
+        <img id="modal-poster" class="modal-poster" src="" alt="">
+        <div class="modal-hero-text">
+          <div class="modal-title" id="modal-title"></div>
+          <div class="modal-meta" id="modal-meta"></div>
+          <div class="modal-actions" id="modal-actions"></div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-body">
+      <div class="modal-overview" id="modal-overview"></div>
+      <div class="service-override" id="service-override"></div>
+      <div class="season-tabs" id="season-tabs"></div>
+      <div class="ep-list" id="ep-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Scan toast -->
+<div class="scan-modal" id="scan-toast">
+  <span class="spin">⟳</span>
+  <span id="scan-msg">Scanning…</span>
+</div>
+
+<div id="toast-container"></div>
+
+<script>
 // ── Constants ──────────────────────────────────────────────────────────────
 const SVCS = {
   netflix:'Netflix', hulu:'Hulu', disney:'Disney+', max:'Max',

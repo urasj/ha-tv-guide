@@ -247,6 +247,10 @@ async def set_service(show_id: int, request: Request):
     d["services"][str(show_id)] = new_svc
     if new_svc != old_svc:
         d.get("deep_links", {}).pop(str(show_id), None)
+    # Accept optional deep_link override (used when manually assigning a service)
+    forced_link = body.get("deep_link")
+    if forced_link:
+        d.setdefault("deep_links", {})[str(show_id)] = forced_link
     # Track manual overrides so scan-all never overwrites them
     if new_svc:
         d.setdefault("manual_services", {})[str(show_id)] = new_svc

@@ -408,6 +408,127 @@
   @keyframes toastIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:none; } }
   @keyframes toastOut { to { opacity:0; transform:translateY(-10px); } }
 
+  /* ── HANDOFF OVERLAY ── */
+  .handoff-overlay {
+    position: fixed; inset: 0; z-index: 450;
+    background: rgba(0,0,0,0.92);
+    display: flex; align-items: center; justify-content: center;
+    animation: fadeIn 0.3s;
+  }
+  .handoff-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 32px 36px;
+    text-align: center;
+    max-width: 480px; width: 90%;
+  }
+  .handoff-app-icon { font-size: 48px; margin-bottom: 12px; }
+  .handoff-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 26px; letter-spacing: 1px; margin-bottom: 8px;
+  }
+  .handoff-sub {
+    font-size: 14px; color: var(--muted); line-height: 1.6; margin-bottom: 24px;
+  }
+  .handoff-remote {
+    display: grid;
+    grid-template-areas:
+      ". up ."
+      "left ok right"
+      ". down ."
+      "back home .";
+    gap: 8px; justify-content: center;
+    margin-bottom: 24px;
+  }
+  .hr-up    { grid-area: up; }
+  .hr-down  { grid-area: down; }
+  .hr-left  { grid-area: left; }
+  .hr-right { grid-area: right; }
+  .hr-ok    { grid-area: ok; }
+  .hr-back  { grid-area: back; }
+  .hr-home  { grid-area: home; }
+  .handoff-remote .remote-btn {
+    width: 48px; height: 48px; font-size: 18px;
+  }
+  .hr-ok { background: var(--surface2); width: 48px; height: 48px; }
+  .handoff-ready {
+    width: 100%;
+    padding: 14px;
+    background: #1db954;
+    border: none; border-radius: 6px;
+    color: #fff; font-family: 'Bebas Neue', sans-serif;
+    font-size: 20px; letter-spacing: 1px;
+    cursor: pointer; transition: all 0.15s;
+    margin-bottom: 10px;
+  }
+  .handoff-ready:hover { background: #1ed760; transform: scale(1.02); }
+  .handoff-cancel {
+    background: none; border: none; color: var(--muted);
+    font-size: 13px; cursor: pointer;
+  }
+  .handoff-cancel:hover { color: var(--text); }
+  .handoff-pulse {
+    display: inline-block;
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--accent); margin-right: 8px;
+    animation: pulse 1.5s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.8); }
+  }
+
+  /* ── HANDOFF OVERLAY ── */
+  .handoff-overlay {
+    position: fixed; inset: 0; z-index: 450;
+    background: rgba(0,0,0,0.92);
+    display: flex; align-items: center; justify-content: center;
+    animation: fadeIn 0.3s;
+  }
+  .handoff-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 32px 36px;
+    text-align: center;
+    max-width: 480px; width: 90%;
+  }
+  .handoff-app-icon { font-size: 48px; margin-bottom: 12px; }
+  .handoff-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 26px; letter-spacing: 1px; margin-bottom: 8px;
+  }
+  .handoff-sub {
+    font-size: 14px; color: var(--muted); line-height: 1.7; margin-bottom: 24px;
+  }
+  .handoff-remote {
+    display: grid;
+    grid-template-areas: ". up ." "left ok right" ". down ." "back home .";
+    gap: 8px; justify-content: center; margin-bottom: 24px;
+  }
+  .hr-up { grid-area: up; } .hr-down { grid-area: down; }
+  .hr-left { grid-area: left; } .hr-right { grid-area: right; }
+  .hr-ok { grid-area: ok; } .hr-back { grid-area: back; } .hr-home { grid-area: home; }
+  .handoff-remote .remote-btn { width: 48px; height: 48px; font-size: 18px; }
+  .handoff-ready {
+    width: 100%; padding: 14px;
+    background: #1db954; border: none; border-radius: 6px;
+    color: #fff; font-family: 'Bebas Neue', sans-serif;
+    font-size: 20px; letter-spacing: 1px;
+    cursor: pointer; transition: all 0.15s; margin-bottom: 10px;
+  }
+  .handoff-ready:hover { background: #1ed760; }
+  .handoff-ready:disabled { opacity: 0.6; cursor: not-allowed; }
+  .handoff-cancel { background: none; border: none; color: var(--muted); font-size: 13px; cursor: pointer; }
+  .handoff-cancel:hover { color: var(--text); }
+  .handoff-pulse {
+    display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent); margin-right: 6px;
+    animation: pulse 1.5s infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.4; transform:scale(0.7); } }
+
   /* ── PROFILE OVERLAY ── */
   .prof-overlay {
     position: fixed; inset: 0; z-index: 400;
@@ -948,14 +1069,66 @@ async function toggleWatched(sid, epId, isWatched) {
 
 // ── Launch ─────────────────────────────────────────────────────────────────
 async function launchShow(sid, svc, epId) {
-  const profiles = appData.profiles?.[svc];
-  if (profiles && profiles.length > 1) {
-    showProfilePicker(svc, async(idx) => {
-      await doLaunch(svc, idx, sid);
-    });
-  } else {
-    await doLaunch(svc, 0, sid);
+  // Step 1: Launch the app on Fire TV (force-stop + fresh start, no profile automation)
+  toast(`🔥 Launching ${SVCS[svc]||svc}…`);
+  try {
+    await post('api/firetv/launch', { service: svc, profileIndex: -1, showId: sid });
+  } catch(e) {
+    toast('Launch failed: ' + e.message, 'error');
+    return;
   }
+  // Step 2: Show handoff overlay - user handles profile/PIN, then clicks Ready
+  showHandoffOverlay(svc, sid);
+}
+
+function showHandoffOverlay(svc, showId) {
+  const svcName = SVCS[svc] || svc;
+  const el = document.createElement('div');
+  el.className = 'handoff-overlay';
+  el.id = 'handoff-overlay';
+  el.innerHTML = `
+    <div class="handoff-box">
+      <div class="handoff-app-icon">📺</div>
+      <div class="handoff-title">${svcName} is opening</div>
+      <div class="handoff-sub">
+        <span class="handoff-pulse"></span>
+        Select your profile, enter your PIN if needed,<br>
+        then wait for the home screen to load.<br>
+        <strong>Click Ready</strong> when you see the home screen.
+      </div>
+      <div class="handoff-remote">
+        <button class="remote-btn hr-up" onclick="remote('KEYCODE_DPAD_UP')">▲</button>
+        <button class="remote-btn hr-left" onclick="remote('KEYCODE_DPAD_LEFT')">◀</button>
+        <button class="remote-btn hr-ok" onclick="remote('KEYCODE_DPAD_CENTER')">OK</button>
+        <button class="remote-btn hr-right" onclick="remote('KEYCODE_DPAD_RIGHT')">▶</button>
+        <button class="remote-btn hr-down" onclick="remote('KEYCODE_DPAD_DOWN')">▼</button>
+        <button class="remote-btn hr-back" onclick="remote('KEYCODE_BACK')">↩</button>
+        <button class="remote-btn hr-home" onclick="remote('KEYCODE_HOME')">⌂</button>
+      </div>
+      <button class="handoff-ready" onclick="handoffReady('${svc}', ${showId})">
+        ✓ I'm Ready — Go to Show
+      </button>
+      <button class="handoff-cancel" onclick="document.getElementById('handoff-overlay').remove()">
+        Cancel
+      </button>
+    </div>`;
+  document.body.appendChild(el);
+}
+
+async function handoffReady(svc, showId) {
+  const overlay = document.getElementById('handoff-overlay');
+  if (overlay) {
+    overlay.querySelector('.handoff-ready').textContent = '⟳ Navigating to show…';
+    overlay.querySelector('.handoff-ready').disabled = true;
+  }
+  try {
+    const res = await post('api/firetv/deeplink', { service: svc, showId });
+    toast(`✓ Opening show on ${SVCS[svc]||svc}`);
+  } catch(e) {
+    toast('Navigation failed: ' + e.message, 'error');
+  }
+  if (overlay) overlay.remove();
+  closeModal();
 }
 
 async function doLaunch(svc, profileIndex, showId) {
@@ -1003,7 +1176,6 @@ async function scanShow(showId) {
   document.getElementById('scan-msg').textContent = `Scanning ${show?.title||'show'}…`;
   scanToast.classList.add('show');
   try {
-    const show = allShows.find(s => s.id === showId);
     const tvdbId = show?.tvdbId;
     const title = encodeURIComponent(show?.title || '');
     if (!tvdbId) { toast('No TVDB ID for this show', 'error'); scanToast.classList.remove('show'); return; }

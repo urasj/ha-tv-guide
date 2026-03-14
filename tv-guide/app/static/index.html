@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+  <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -619,8 +619,15 @@ async function loadShows() {
       get('api/status'),
       get('api/shows')
     ]);
-    // profiles come from status.profiles if backend exposes them
-    appData = { watched:{}, services:{}, deep_links:{}, profiles:{}, ...status, shows };
+    // status.services is the SVCS labels dict - store separately
+    var SVCS_LABELS = status.services || {};
+    // Build per-show service map from shows array
+    var showServices = {};
+    shows.forEach(s => { if (s.service) showServices[String(s.id)] = s.service; });
+    // profiles come from status.profiles
+    appData = { watched:{}, services: showServices, deep_links:{}, profiles:{}, ...status, shows };
+    // Restore per-show services (status.services overwrites with labels)
+    appData.services = showServices;
     allShows = shows;
     render();
   } catch(e) {
@@ -896,7 +903,9 @@ async function setService(showId, svc, btn) {
   try {
     await post(`api/shows/${showId}/service`, { service: svc });
     if (!appData.services) appData.services = {};
-    appData.services[String(showId)] = svc || undefined;
+    appData.services[String(showId)] = svc || null;
+    var showObj = allShows.find(s => s.id === showId);
+    if (showObj) showObj.service = svc || null;
     renderServiceButtons(showId);
     // Re-render actions
     const show = allShows.find(s=>s.id===showId);
@@ -986,10 +995,16 @@ async function scanShow(showId) {
   document.getElementById('scan-msg').textContent = `Scanning ${show?.title||'show'}…`;
   scanToast.classList.add('show');
   try {
-    const res = await get(`api/shows/${showId}/scan-service`);
+    const show = allShows.find(s => s.id === showId);
+    const tvdbId = show?.tvdbId;
+    const title = encodeURIComponent(show?.title || '');
+    if (!tvdbId) { toast('No TVDB ID for this show', 'error'); scanToast.classList.remove('show'); return; }
+    const res = await get(`api/shows/${showId}/scan-service?tvdb_id=${tvdbId}&title=${title}`);
     if (res.service) {
       if (!appData.services) appData.services = {};
       appData.services[String(showId)] = res.service;
+      var showObj2 = allShows.find(s => s.id === showId);
+      if (showObj2) showObj2.service = res.service;
       toast(`✓ Found on ${SVCS[res.service]||res.service}`);
       if (currentShowId === showId) {
         renderServiceButtons(showId);
@@ -1013,7 +1028,7 @@ async function scanAll() {
   document.getElementById('scan-msg').textContent = 'Scanning all shows…';
   scanToast.classList.add('show');
   try {
-    const res = await post('api/scan-all', {});
+    const res = await post('api/scan-all', { shows: allShows.map(s => ({id:s.id, tvdbId:s.tvdbId, title:s.title})) });
     if (res.services) Object.assign(appData.services, res.services);
     toast(`✓ Scanned ${Object.keys(res.services||{}).length} shows`);
     await loadShows();

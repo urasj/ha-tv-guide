@@ -455,15 +455,18 @@ async def firetv_deeplink(request: Request):
     launch = APP_LAUNCH.get(svc)
     if not launch:
         raise HTTPException(400, f"Unknown service: {svc}")
-    pkg = launch[0]
+    pkg, component = launch
     deep_link = None
     if show_id:
         d = load_data()
         deep_link = d.get("deep_links", {}).get(str(show_id))
     if not deep_link:
-        raise HTTPException(404, "No deep link for this show — run Scan first")
+        raise HTTPException(404, "No deep link stored — open the show and run Scan first")
     async with httpx.AsyncClient() as client:
-        await ha_adb(client, f'am start -a android.intent.action.VIEW -d "{deep_link}" -n {component} --activity-clear-task' if component else f'am start -a android.intent.action.VIEW -d "{deep_link}" {pkg}')
+        if component:
+            await ha_adb(client, f'am start -a android.intent.action.VIEW -d "{deep_link}" -n {component} --activity-clear-task')
+        else:
+            await ha_adb(client, f'am start -a android.intent.action.VIEW -d "{deep_link}" {pkg}')
     return {"ok": True, "deep_link": deep_link}
 
 @app.post("/api/firetv/command")

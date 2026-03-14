@@ -1051,15 +1051,14 @@ async function setService(showId, svc, btn) {
     // Re-render season episodes to show/hide watch buttons
     if (show?.episodes) renderEpisodes(show, currentSeason);
     toast(`Service set to ${SVCS[svc]||svc||'none'}`);
-    // Auto-scan to get the correct deep link for the new service
+    // Auto-fetch deep link for the manually chosen service
+    // Pass forceSvc so TMDB result doesn't overwrite the manual choice
     if (svc) {
       const show2 = allShows.find(s => s.id === showId);
       if (show2?.tvdbId) {
-        // Clear any stale deep link first
         if (appData.deep_links) delete appData.deep_links[String(showId)];
         if (show2) show2.deep_link = null;
-        // Scan in background - update UI when done
-        scanShow(showId);
+        scanShow(showId, svc);
       }
     }
   } catch(e) { toast('Failed to set service','error'); }
@@ -1186,40 +1185,69 @@ function selectProfile(i) {
 }
 
 // ── Scan ───────────────────────────────────────────────────────────────────
-async function scanShow(showId) {
+async function scanShow(showId, forceSvc) {
+  // forceSvc: when set, keep this service regardless of TMDB result (used after manual override)
   const scanToast = document.getElementById('scan-toast');
   const show = allShows.find(s=>s.id===showId);
-  document.getElementById('scan-msg').textContent = `Scanning ${show?.title||'show'}…`;
+  document.getElementById('scan-msg').textContent = `Getting link for ${show?.title||'show'}…`;
   scanToast.classList.add('show');
   try {
     const tvdbId = show?.tvdbId;
     const title = encodeURIComponent(show?.title || '');
     if (!tvdbId) { toast('No TVDB ID for this show', 'error'); scanToast.classList.remove('show'); return; }
     const res = await get(`api/shows/${showId}/scan-service?tvdb_id=${tvdbId}&title=${title}`);
-    if (res.service) {
+    // If forceSvc is set, use that service — don't let TMDB overwrite the manual choice
+    const svcToUse = forceSvc || res.service;
+    if (svcToUse) {
       if (!appData.services) appData.services = {};
-      appData.services[String(showId)] = res.service;
-      var showObj2 = allShows.find(s => s.id === showId);
-      if (showObj2) showObj2.service = res.service;
-      // Store deep link if returned
-      if (res.deep_link) {
-        if (!appData.deep_links) appData.deep_links = {};
-        appData.deep_links[String(showId)] = res.deep_link;
-        if (showObj2) showObj2.deep_link = res.deep_link;
+      // Only update service if not forcing (auto-scan) or if forcing and matches TMDB
+      if (!forceSvc) {
+        appData.services[String(showId)] = svcToUse;
+        var showObj2 = allShows.find(s => s.id === showId);
+        if (showObj2) showObj2.service = svcToUse;
       }
-      toast(`✓ Found on ${SVCS[res.service]||res.service}${res.deep_link ? ' (direct link ready)' : ''}`);
+      // Build deep link for the correct service
+      var deepLink = res.deep_link;
+      // If TMDB found a different service, we still want a deep link for forceSvc
+      if (forceSvc && res.service !== forceSvc) {
+        // Build a search-based deep link for the manually chosen service
+        const searchLinks = {
+          netflix: `https://www.netflix.com/search?q=${title}`,
+          hulu: `https://www.hulu.com/search?q=${title}`,
+          disney: `https://www.disneyplus.com/search/${title}`,
+          max: `https://play.max.com/search/result?q=${title}`,
+          peacock: `https://www.peacocktv.com/search?q=${title}`,
+          discovery: `https://play.discoveryplus.com/show/${title.toLowerCase().replace(/%20/g,'-')}`,
+          prime: `https://www.amazon.com/s?k=${title}&i=prime-instant-video`,
+          paramount: `https://www.paramountplus.com/shows/${title.toLowerCase().replace(/%20/g,'-')}/`,
+          apple: `https://tv.apple.com/search?term=${title}`,
+        };
+        deepLink = searchLinks[forceSvc] || null;
+        // Save the forced deep link to backend
+        if (deepLink) {
+          await post(`api/shows/${showId}/service`, { service: forceSvc, deep_link: deepLink });
+        }
+      }
+      if (deepLink) {
+        if (!appData.deep_links) appData.deep_links = {};
+        appData.deep_links[String(showId)] = deepLink;
+        var showObj3 = allShows.find(s => s.id === showId);
+        if (showObj3) showObj3.deep_link = deepLink;
+      }
+      const displaySvc = forceSvc || svcToUse;
+      toast(`✓ ${forceSvc ? 'Link ready for' : 'Found on'} ${SVCS[displaySvc]||displaySvc}${deepLink ? ' ▶' : ''}`);
       if (currentShowId === showId) {
         renderServiceButtons(showId);
-        const show = allShows.find(s=>s.id===showId);
-        if (show?.episodes) renderEpisodes(show, currentSeason);
-        document.getElementById('modal-actions').innerHTML = 
-          `<button class="btn btn-primary" onclick="launchShow(${showId},'${res.service}')">▶ Watch on ${SVCS[res.service]||res.service}</button>
+        const showNow = allShows.find(s=>s.id===showId);
+        if (showNow?.episodes) renderEpisodes(showNow, currentSeason);
+        document.getElementById('modal-actions').innerHTML =
+          `<button class="btn btn-primary" onclick="launchShow(${showId},'${displaySvc}')">▶ Watch on ${SVCS[displaySvc]||displaySvc}</button>
            <button class="btn btn-ghost" onclick="scanShow(${showId})">🔍 Scan</button>`;
       }
     } else {
       toast('Not found on any streaming service', 'error');
     }
-  } catch(e) { toast('Scan failed','error'); }
+  } catch(e) { toast('Scan failed: ' + e.message, 'error'); }
   scanToast.classList.remove('show');
 }
 

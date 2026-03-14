@@ -291,14 +291,15 @@ def build_deep_link(svc: str, title: str, ext_ids: dict) -> str:
     if svc == "discovery" and ext_ids.get("discovery_uuid"):
         return f"https://play.discoveryplus.com/show/{ext_ids['discovery_uuid']}"
     urls = {
-        "netflix":   f"https://www.netflix.com/search?q={q}",
-        "hulu":      f"https://www.hulu.com/search?q={q}",
+        # URL formats matched to each app's registered intent filter paths
+        "netflix":   f"https://www.netflix.com/search?q={q}",           # netflix uses /search
+        "hulu":      f"https://www.hulu.com/series/{slug}",              # hulu: /series/slug
         "disney":    f"https://www.disneyplus.com/browse/entity-{ext_ids['disney_entity_id']}" if ext_ids.get('disney_entity_id') else f"https://www.disneyplus.com/series/{slug}",
-        "max":       f"https://play.max.com/search/result?q={q}",
-        "peacock":   f"https://www.peacocktv.com/search?q={q}",
-        "discovery": f"https://play.discoveryplus.com/show/{slug}",
-        "prime":     f"https://www.amazon.com/s?k={q}&i=prime-instant-video",
-        "apple":     f"https://tv.apple.com/search?term={q}",
+        "max":       f"https://play.max.com/show/{slug}",                # max: /show/slug
+        "peacock":   f"https://www.peacocktv.com/watch/series/{slug}",   # peacock: /watch/series/
+        "discovery": f"https://play.discoveryplus.com/show/{slug}",      # confirmed working
+        "prime":     f"https://www.amazon.com/gp/video/detail/{slug}",  # prime: /gp/video/detail/
+        "apple":     f"https://tv.apple.com/show/{slug}",               # apple: /show/
         "paramount": f"https://www.paramountplus.com/shows/{slug}/",
         "plex":      f"https://app.plex.tv/desktop/#!/search?query={q}",
     }

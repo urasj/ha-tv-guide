@@ -79,7 +79,7 @@ def load_data():
     if DATA_FILE.exists():
         try: return json.loads(DATA_FILE.read_text())
         except: pass
-    return {"watched": {}, "services": {}, "deep_links": {}, "progress": {}}
+    return {"watched": {}, "services": {}, "deep_links": {}, "progress": {}, "manual_services": {}}
 
 def save_data(d):
     DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -247,6 +247,11 @@ async def set_service(show_id: int, request: Request):
     d["services"][str(show_id)] = new_svc
     if new_svc != old_svc:
         d.get("deep_links", {}).pop(str(show_id), None)
+    # Track manual overrides so scan-all never overwrites them
+    if new_svc:
+        d.setdefault("manual_services", {})[str(show_id)] = new_svc
+    else:
+        d.get("manual_services", {}).pop(str(show_id), None)
     save_data(d)
     return {"ok": True}
 
@@ -372,10 +377,14 @@ async def scan_all(request: Request):
             except: pass
             await asyncio.sleep(0.15)
     d = load_data()
-    d["services"].update(results)
-    d.setdefault("deep_links", {}).update({k: v for k, v in deep_links.items() if v})
+    manual = d.get("manual_services", {})
+    # Never overwrite manually set services
+    auto_results = {k: v for k, v in results.items() if k not in manual}
+    auto_links = {k: v for k, v in deep_links.items() if v and k not in manual}
+    d["services"].update(auto_results)
+    d.setdefault("deep_links", {}).update(auto_links)
     save_data(d)
-    return {"results": results, "scanned": len(shows), "found": len(results)}
+    return {"results": results, "auto_updated": len(auto_results), "scanned": len(shows), "found": len(results)}
 
 # ── Fire TV launch ────────────────────────────────────────────────────────
 async def get_resumed_activity(client) -> str:

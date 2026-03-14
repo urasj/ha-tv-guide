@@ -565,9 +565,6 @@
 <div id="toast-container"></div>
 
 <script>
-if (window.__tvGuideLoaded) { console.log('TV Guide: already loaded, skipping'); }
-else {
-window.__tvGuideLoaded = true;
 // ── Constants ──────────────────────────────────────────────────────────────
 var SVCS = {
   netflix:'Netflix', hulu:'Hulu', disney:'Disney+', max:'Max',
@@ -1049,8 +1046,10 @@ document.addEventListener('keydown', e => {
 });
 
 // ── Init ───────────────────────────────────────────────────────────────────
-loadShows();
-} // end guard
+if (!window.__tvGuideLoaded) {
+  window.__tvGuideLoaded = true;
+  loadShows();
+}
 </script>
 </body>
 </html>

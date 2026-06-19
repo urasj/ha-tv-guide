@@ -551,7 +551,7 @@ async function addShow(tvdbId,btn){
   btn.disabled=true; btn.textContent='Adding…';
   try{
     const r=await post('api/add',{tvdbId:tvdbId,monitor:'all',search:false});
-    btn.textContent='✓ Added'; toast('Added '+(r.title||'show')+' to your library');
+    btn.textContent='✓ Added'; toast('Added '+(r.title||'show')+(r.service?(' · on '+(SVCS[r.service]||r.service)):' · tap to set service'));
     loadShows();
   }catch(e){ btn.disabled=false; btn.textContent='＋ Add'; toast('Add failed: '+e.message,'error'); }
 }

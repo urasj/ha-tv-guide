@@ -588,7 +588,47 @@ async def add_series(request: Request):
         if ar.status_code not in (200, 201):
             raise HTTPException(502, f"Sonarr add failed ({ar.status_code}): {ar.text[:300]}")
         added = ar.json()
-    return {"ok": True, "id": added.get("id"), "title": added.get("title")}
+        new_id = added.get("id")
+        # Auto-detect streaming service + deep link via TMDB (same logic as Scan).
+        service = None
+        deep_link = None
+        if TMDB_KEY and new_id:
+            try:
+                fr = await client.get(f"{TMDB_BASE}/find/{tvdb}",
+                                      params={"api_key": TMDB_KEY, "external_source": "tvdb_id"}, timeout=10)
+                tv = fr.json().get("tv_results", []) if fr.status_code == 200 else []
+                if tv:
+                    tmdb_id = tv[0]["id"]
+                    show_title = series.get("title") or tv[0].get("name", "")
+                    er = await client.get(f"{TMDB_BASE}/tv/{tmdb_id}/external_ids",
+                                          params={"api_key": TMDB_KEY}, timeout=10)
+                    ext_ids = er.json() if er.status_code == 200 else {}
+                    pr = await client.get(f"{TMDB_BASE}/tv/{tmdb_id}/watch/providers",
+                                          params={"api_key": TMDB_KEY}, timeout=10)
+                    us = pr.json().get("results", {}).get("US", {}) if pr.status_code == 200 else {}
+                    providers = us.get("flatrate", []) + us.get("free", []) + us.get("ads", [])
+                    for p in providers:
+                        nm = p.get("provider_name", "").lower()
+                        for key, svc in TMDB_SVC_MAP.items():
+                            if key in nm:
+                                if svc == "discovery":
+                                    uuid = await fetch_discovery_uuid(client, show_title)
+                                    if uuid:
+                                        ext_ids["discovery_uuid"] = uuid
+                                service = svc
+                                deep_link = build_deep_link(svc, show_title, ext_ids)
+                                break
+                        if service:
+                            break
+                    if service:
+                        d = load_data()
+                        d["services"][str(new_id)] = service
+                        if deep_link:
+                            d.setdefault("deep_links", {})[str(new_id)] = deep_link
+                        save_data(d)
+            except Exception:
+                pass
+    return {"ok": True, "id": new_id, "title": added.get("title"), "service": service, "deep_link": deep_link}
 
 # ── Fire TV launch ────────────────────────────────────────────────────────
 async def get_resumed_activity(client) -> str:

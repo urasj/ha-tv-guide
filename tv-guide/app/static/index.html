@@ -176,6 +176,12 @@
   .add-btn:disabled{opacity:.55;cursor:default}
   .in-lib{font-size:12px;color:var(--teal);flex-shrink:0;padding:8px 12px;font-weight:600}
   .add-hint{color:var(--muted);font-size:13px;text-align:center;padding:26px}
+  .arch-sec{font-family:'Space Grotesk';font-size:15px;font-weight:600;padding:12px 14px 4px;display:flex;gap:8px;align-items:baseline}
+  .arch-sec .ct{font-size:12px;color:var(--muted);font-weight:400}
+  .ares .mini{flex-shrink:0}
+  .modal-remove{margin-top:18px;padding-top:16px;border-top:1px solid var(--line);display:flex;justify-content:flex-end}
+  .rm-link{background:none;border:1px solid var(--line);color:var(--muted);font-family:'Inter';font-size:13px;font-weight:600;padding:9px 16px;border-radius:11px;cursor:pointer}
+  .rm-link:hover{border-color:#7a1f24;color:#ff8f8f}
 </style>
 </head>
 <body>
@@ -188,6 +194,7 @@
   <div class="spacer"></div>
   <button class="ico" id="btn-scan-all" title="Scan services" onclick="scanAll()">⌕</button>
   <button class="ico" id="btn-add" title="Add a show" onclick="openAdd()" style="background:var(--teal);color:#062b26;width:auto;padding:0 14px;font-weight:700;font-family:'Inter'">＋ Add</button>
+  <button class="ico" id="btn-archive" title="Archive & removed" onclick="openArchive()">🗄</button>
   <button class="ico" id="btn-refresh" title="Refresh" onclick="loadShows()">↻</button>
 </nav>
 
@@ -246,6 +253,7 @@
       <div class="service-override" id="service-override"></div>
       <div class="season-tabs" id="season-tabs"></div>
       <div class="ep-list" id="ep-list"></div>
+      <div class="modal-remove"><button class="rm-link" onclick="removeFlow(currentShowId)">Remove from library…</button></div>
     </div>
   </div>
 </div>
@@ -258,6 +266,13 @@
     <div class="add-head"><h2>Add a show</h2><button class="modal-close" style="position:static" onclick="closeAdd()">✕</button></div>
     <div class="add-search"><input id="add-input" type="text" placeholder="Search for a show to track…" autocomplete="off"></div>
     <div class="add-results" id="add-results"><div class="add-hint">Type a show name to search.</div></div>
+  </div>
+</div>
+
+<div class="add-backdrop" id="arch-modal" onclick="maybeCloseArch(event)">
+  <div class="add-panel">
+    <div class="add-head"><h2>Archive &amp; removed</h2><button class="modal-close" style="position:static" onclick="closeArchive()">✕</button></div>
+    <div class="add-results" id="arch-results"><div class="add-hint">Loading…</div></div>
   </div>
 </div>
 
@@ -294,7 +309,8 @@ async function loadShows(){
     appData.services=showServices; appData.deep_links=showDeepLinks;
     appData.watched=(data&&data.watched)?data.watched:{};
     appData.nextup=nextup||{};
-    allShows=shows;
+    appData.archivedShows=shows.filter(s=>s.archived);
+    allShows=shows.filter(s=>!s.archived);
     render(); initDragScroll();
   }catch(e){ toast('Failed to load shows: '+e.message,'error'); console.error(e); }
   if(rb) rb.textContent='↻';
@@ -560,6 +576,49 @@ async function addShow(tvdbId,btn){
     loadShows();
   }catch(e){ btn.disabled=false; btn.textContent='＋ Add'; toast('Add failed: '+e.message,'error'); }
 }
+// ── Remove / Archive ─────────────────────────────────────────────────────────
+function removeFlow(showId){
+  const show=allShows.find(s=>s.id===showId)||(appData.archivedShows||[]).find(s=>s.id===showId);
+  const title=show?show.title:'this show';
+  const el=document.createElement('div'); el.className='prof-overlay'; el.id='rm-overlay';
+  el.innerHTML=`<div class="prof-box"><div class="prof-title">Remove “${title}”?</div>
+    <div class="prof-app">Archive keeps it on a shelf you can return to. Remove takes it out of the library — it's saved to Recently removed so you can restore it.</div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <button class="handoff-ready" onclick="doArchive(${showId})">🗄 Archive (keep for later)</button>
+      <button class="mini" style="background:#7a1f24;color:#fff;padding:13px;font-size:15px" onclick="doRemove(${showId})">✕ Remove from library</button>
+      <button class="prof-cancel" onclick="document.getElementById('rm-overlay').remove()">Cancel</button>
+    </div></div>`;
+  document.body.appendChild(el);
+}
+async function doArchive(id){ document.getElementById('rm-overlay')?.remove(); try{ await post(`api/shows/${id}/archive`,{}); toast('Archived'); closeModal(); loadShows(); }catch(e){ toast('Archive failed: '+e.message,'error'); } }
+async function doRemove(id){ document.getElementById('rm-overlay')?.remove(); try{ const r=await del(`api/shows/${id}`); toast('Removed '+(r.removed||'')); closeModal(); loadShows(); }catch(e){ toast('Remove failed: '+e.message,'error'); } }
+
+function openArchive(){ document.getElementById('arch-modal').classList.add('open'); document.body.style.overflow='hidden'; renderArchive(); }
+function closeArchive(){ document.getElementById('arch-modal').classList.remove('open'); document.body.style.overflow=''; }
+function maybeCloseArch(e){ if(e.target===document.getElementById('arch-modal')) closeArchive(); }
+async function renderArchive(){
+  const box=document.getElementById('arch-results'); box.innerHTML='<div class="add-hint">Loading…</div>';
+  let removed=[]; try{ removed=await get('api/removed'); }catch(e){}
+  const arch=appData.archivedShows||[];
+  let html=`<div class="arch-sec">Archived <span class="ct">${arch.length}</span></div>`;
+  html+= arch.length ? arch.map(s=>{const p=getPoster(s),svc=getSvc(s.id);
+    return `<div class="ares"><img src="${p||''}" onerror="this.style.visibility='hidden'">
+      <div class="ai"><div class="at">${s.title}</div><div class="am">${[svc?SVCS[svc]:s.network,s.year].filter(Boolean).join(' · ')}</div></div>
+      <button class="add-btn" onclick="unarchiveShow(${s.id})">↺ Library</button>
+      <button class="mini" style="background:#7a1f24;color:#fff" onclick="doRemove(${s.id})" title="Remove">✕</button></div>`;}).join('')
+    : `<div class="add-hint" style="padding:14px">No archived shows yet.</div>`;
+  html+=`<div class="arch-sec" style="margin-top:10px">Recently removed <span class="ct">${removed.length}</span></div>`;
+  html+= removed.length ? removed.map(r=>`<div class="ares"><img src="${r.poster||''}" onerror="this.style.visibility='hidden'">
+      <div class="ai"><div class="at">${r.title||'Unknown'}</div><div class="am">${[r.network,r.year,r.removedAt?('removed '+new Date(r.removedAt).toLocaleDateString()):''].filter(Boolean).join(' · ')}</div></div>
+      <button class="add-btn" onclick="restoreShow(${r.tvdbId},this)">↺ Restore</button>
+      <button class="mini" style="background:#3a3f4f;color:#fff" onclick="purgeRemoved(${r.tvdbId})" title="Delete from history">🗑</button></div>`).join('')
+    : `<div class="add-hint" style="padding:14px">Nothing removed recently.</div>`;
+  box.innerHTML=html;
+}
+async function unarchiveShow(id){ try{ await post(`api/shows/${id}/unarchive`,{}); toast('Moved to library'); await loadShows(); renderArchive(); }catch(e){ toast('Failed: '+e.message,'error'); } }
+async function restoreShow(tvdb,btn){ if(btn){btn.disabled=true;btn.textContent='Restoring…';} try{ const r=await post('api/restore',{tvdbId:tvdb}); toast('Restored '+(r.title||'')); await loadShows(); renderArchive(); }catch(e){ if(btn){btn.disabled=false;btn.textContent='↺ Restore';} toast('Restore failed: '+e.message,'error'); } }
+async function purgeRemoved(tvdb){ try{ await del('api/removed/'+tvdb); toast('Deleted from history'); renderArchive(); }catch(e){ toast('Failed: '+e.message,'error'); } }
+
 if(!window.__tvg){ window.__tvg=true; loadShows(); sonosLoadState(); }
 </script>
 </body>

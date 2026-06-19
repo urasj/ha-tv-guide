@@ -81,7 +81,7 @@ def load_data():
     if DATA_FILE.exists():
         try: return json.loads(DATA_FILE.read_text())
         except: pass
-    return {"watched": {}, "services": {}, "deep_links": {}, "progress": {}, "manual_services": {}}
+    return {"watched": {}, "services": {}, "deep_links": {}, "progress": {}, "manual_services": {}, "archived": [], "removed": []}
 
 def save_data(d):
     DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -158,6 +158,7 @@ async def get_shows():
                 raise HTTPException(502, f"Sonarr returned {r.status_code}")
             shows = r.json()
             d = load_data()
+            archived_set = {str(x) for x in d.get("archived", [])}
             result = []
             for s in shows:
                 sid = str(s["id"])
@@ -187,6 +188,7 @@ async def get_shows():
                     "genres": s.get("genres", []),
                     "service": d["services"].get(sid),
                     "deep_link": d.get("deep_links", {}).get(sid),
+                    "archived": sid in archived_set,
                 })
             result.sort(key=lambda x: x["title"])
             return result
@@ -630,6 +632,123 @@ async def add_series(request: Request):
             except Exception:
                 pass
     return {"ok": True, "id": new_id, "title": added.get("title"), "service": service, "deep_link": deep_link}
+
+# ── Archive / remove / restore ───────────────────────────────────────────────
+async def _sonarr_add(client, tvdb, monitor="all", search=False):
+    lr = await client.get(f"{SONARR_URL}/api/v3/series/lookup",
+                          headers={"X-Api-Key": SONARR_KEY}, params={"term": f"tvdb:{tvdb}"}, timeout=20)
+    if lr.status_code != 200 or not lr.json():
+        raise HTTPException(502, "Sonarr lookup failed")
+    series = lr.json()[0]
+    if series.get("id"):
+        return series
+    profiles, folders, lang = await _sonarr_defaults(client)
+    if not profiles or not folders:
+        raise HTTPException(500, "Sonarr has no quality profile or root folder configured")
+    series.update({
+        "qualityProfileId": profiles[0]["id"],
+        "rootFolderPath": folders[0]["path"],
+        "monitored": monitor != "none",
+        "seasonFolder": True,
+        "addOptions": {"monitor": monitor, "searchForMissingEpisodes": search, "searchForCutoffUnmetEpisodes": False},
+    })
+    if lang:
+        series["languageProfileId"] = lang[0]["id"]
+    ar = await client.post(f"{SONARR_URL}/api/v3/series",
+                           headers={"X-Api-Key": SONARR_KEY, "Content-Type": "application/json"},
+                           json=series, timeout=30)
+    if ar.status_code not in (200, 201):
+        raise HTTPException(502, f"Sonarr add failed ({ar.status_code})")
+    return ar.json()
+
+@app.post("/api/shows/{show_id}/archive")
+async def archive_show(show_id: int):
+    d = load_data()
+    d.setdefault("archived", [])
+    if str(show_id) not in [str(x) for x in d["archived"]]:
+        d["archived"].append(show_id)
+    save_data(d)
+    return {"ok": True}
+
+@app.post("/api/shows/{show_id}/unarchive")
+async def unarchive_show(show_id: int):
+    d = load_data()
+    d["archived"] = [x for x in d.get("archived", []) if str(x) != str(show_id)]
+    save_data(d)
+    return {"ok": True}
+
+@app.delete("/api/shows/{show_id}")
+async def remove_series(show_id: int):
+    if not SONARR_URL or not SONARR_KEY:
+        raise HTTPException(503, "Sonarr not configured")
+    d = load_data()
+    sid = str(show_id)
+    meta = {}
+    async with httpx.AsyncClient() as client:
+        try:
+            gr = await client.get(f"{SONARR_URL}/api/v3/series/{show_id}",
+                                  headers={"X-Api-Key": SONARR_KEY}, timeout=15)
+            if gr.status_code == 200:
+                s = gr.json()
+                imgs = s.get("images", [])
+                poster = next((i.get("remoteUrl") or i.get("url") for i in imgs if i.get("coverType") == "poster"), None)
+                meta = {"tvdbId": s.get("tvdbId"), "title": s.get("title"),
+                        "year": s.get("year"), "network": s.get("network"), "poster": poster}
+        except Exception:
+            pass
+        dr = await client.delete(f"{SONARR_URL}/api/v3/series/{show_id}",
+                                 headers={"X-Api-Key": SONARR_KEY},
+                                 params={"deleteFiles": "false", "addImportListExclusion": "false"}, timeout=30)
+        if dr.status_code not in (200, 202, 204):
+            raise HTTPException(502, f"Sonarr delete failed ({dr.status_code})")
+    entry = {**meta, "id": show_id,
+             "service": d.get("services", {}).get(sid),
+             "deep_link": d.get("deep_links", {}).get(sid),
+             "removedAt": datetime.now(timezone.utc).isoformat()}
+    d.setdefault("removed", [])
+    d["removed"] = [r for r in d["removed"] if str(r.get("tvdbId")) != str(meta.get("tvdbId"))]
+    d["removed"].insert(0, entry)
+    d["removed"] = d["removed"][:100]
+    d["archived"] = [x for x in d.get("archived", []) if str(x) != sid]
+    for k in ("services", "deep_links", "watched", "manual_services"):
+        if isinstance(d.get(k), dict):
+            d[k].pop(sid, None)
+    save_data(d)
+    return {"ok": True, "removed": entry.get("title")}
+
+@app.get("/api/removed")
+async def get_removed():
+    return load_data().get("removed", [])
+
+@app.delete("/api/removed/{tvdb}")
+async def purge_removed(tvdb: int):
+    d = load_data()
+    d["removed"] = [r for r in d.get("removed", []) if str(r.get("tvdbId")) != str(tvdb)]
+    save_data(d)
+    return {"ok": True}
+
+@app.post("/api/restore")
+async def restore_series(request: Request):
+    if not SONARR_URL or not SONARR_KEY:
+        raise HTTPException(503, "Sonarr not configured")
+    body = await request.json()
+    tvdb = body.get("tvdbId")
+    if not tvdb:
+        raise HTTPException(400, "tvdbId required")
+    d = load_data()
+    entry = next((r for r in d.get("removed", []) if str(r.get("tvdbId")) == str(tvdb)), None)
+    async with httpx.AsyncClient() as client:
+        added = await _sonarr_add(client, tvdb, "all", False)
+    new_id = added.get("id")
+    nsid = str(new_id)
+    if entry:
+        if entry.get("service"):
+            d.setdefault("services", {})[nsid] = entry["service"]
+        if entry.get("deep_link"):
+            d.setdefault("deep_links", {})[nsid] = entry["deep_link"]
+    d["removed"] = [r for r in d.get("removed", []) if str(r.get("tvdbId")) != str(tvdb)]
+    save_data(d)
+    return {"ok": True, "id": new_id, "title": added.get("title")}
 
 # ── Fire TV launch ────────────────────────────────────────────────────────
 async def get_resumed_activity(client) -> str:

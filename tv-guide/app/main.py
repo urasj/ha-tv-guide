@@ -696,11 +696,19 @@ async def _do_play(svc, pkg, profiles, profile_index, nav, deep_link):
             if nav and nav.get("method") == "blind":
                 await asyncio.sleep(nav.get("pre", 6))
                 gap = nav.get("gap", 0.45)
+                # Navigation only (one short command).
                 seq = ("input keyevent %d; sleep %s; " % (nav["slam_key"], gap)) * nav["slam_count"]
                 seq += ("input keyevent %d; sleep %s; " % (nav["step_key"], gap)) * int(profile_index)
-                seq += "sleep %s; input keyevent %d" % (nav.get("settle", 1.5), nav["select_key"])
+                seq = seq.strip().rstrip(";").strip()
                 try:
                     await ha_adb(client, seq)
+                except Exception:
+                    pass
+                # Settle in Python, then fire the SELECT as its own clean press
+                # (a long sleep inside one ADB command gets cut off before the press lands).
+                await asyncio.sleep(nav.get("settle", 2.0))
+                try:
+                    await ha_adb(client, "input keyevent %d" % nav["select_key"])
                 except Exception:
                     pass
                 await asyncio.sleep(nav.get("post", 8))

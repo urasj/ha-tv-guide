@@ -204,6 +204,7 @@
 <div class="dock">
   <div class="dgrp">
     <span class="dlbl">FIRE&nbsp;TV</span>
+    <button class="db" id="btn-power" onclick="powerToggle()" title="Power Fire TV + LG TV" style="background:#7a1f24">⏻</button>
     <div class="pad">
       <span></span><button class="pk" onclick="remote('KEYCODE_DPAD_UP')">▲</button><span></span>
       <button class="pk" onclick="remote('KEYCODE_DPAD_LEFT')">◀</button><button class="pk c" onclick="remote('KEYCODE_DPAD_CENTER')">OK</button><button class="pk" onclick="remote('KEYCODE_DPAD_RIGHT')">▶</button>
@@ -423,6 +424,7 @@ async function setService(showId,svc,btn){
     const next=getNextUp(allShows.find(s=>s.id===showId)); const actions=document.getElementById('modal-actions');
     actions.innerHTML=svc?((next?`<button class="btn btn-primary" onclick="resumeShow(${showId})">▶ Resume ${epLabel(next)}</button>`:'')+`<button class="btn btn-ghost" onclick="launchShow(${showId},'${svc}')">📺 Open ${SVCS[svc]||svc}</button><button class="btn btn-ghost" onclick="scanShow(${showId})">🔍 Scan</button>`):`<button class="btn btn-ghost" onclick="scanShow(${showId})">🔍 Find streaming service</button>`;
     toast(`Service set to ${SVCS[svc]||svc||'none'}`);
+    _progressDirty=true;
     if(svc){ const s2=allShows.find(s=>s.id===showId); if(s2?.tvdbId){ if(appData.deep_links) delete appData.deep_links[String(showId)]; s2.deep_link=null; scanShow(showId,svc); } }
   }catch(e){ toast('Failed to set service','error'); }
 }
@@ -435,7 +437,9 @@ async function toggleWatched(sid,epId,isW){
 function resumeShow(showId){ const svc=getSvc(showId); if(!svc){ openModal(showId); toast('Pick a streaming service first','error'); return; } launchShow(showId,svc); }
 async function launchShow(sid,svc,epId){
   toast(`Launching ${SVCS[svc]||svc}…`);
-  try{ await post('api/firetv/launch',{service:svc,profileIndex:-1,showId:sid}); }catch(e){ toast('Launch failed: '+e.message,'error'); return; }
+  let res;
+  try{ res=await post('api/firetv/launch',{service:svc,profileIndex:-1,showId:sid}); }catch(e){ toast('Launch failed: '+e.message,'error'); return; }
+  if(res&&res.already_running){ toast(`Opening show on ${SVCS[svc]||svc}`); closeModal(); return; }
   showHandoffOverlay(svc,sid);
 }
 function showHandoffOverlay(svc,showId){
@@ -496,6 +500,7 @@ async function scanAll(){
   st.classList.remove('show'); btn.disabled=false;
 }
 
+async function powerToggle(){ try{ const r=await post('api/power',{action:'toggle'}); toast('Power '+(r.action==='on'?'on':'off')+' · Fire TV + LG TV'); const b=document.getElementById('btn-power'); if(b) b.classList.toggle('on',r.action==='on'); }catch(e){ toast('Power failed: '+e.message,'error'); } }
 async function remote(key){ try{ await post('api/firetv/command',{command:key}); }catch(e){ toast('Remote error','error'); } }
 
 var sonosState={volume:.42,muted:false,speech:false,night:false};

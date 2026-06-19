@@ -18,6 +18,7 @@ HA_URL      = os.environ.get("HA_URL", "http://homeassistant:8123").rstrip("/")
 HA_TOKEN    = os.environ.get("HA_TOKEN", "")
 FIRETV_ENT  = os.environ.get("FIRETV_ENTITY", "media_player.fire_tv_192_168_7_211")
 SONOS_ENT   = os.environ.get("SONOS_ENTITY", "media_player.living_room")
+LG_ENT      = os.environ.get("LG_ENTITY", "media_player.lg_webos_tv_oled65c3aua_2")
 INGRESS_PATH = os.environ.get("INGRESS_PATH", "").rstrip("/")
 TMDB_BASE   = "https://api.themoviedb.org/3"
 
@@ -661,6 +662,12 @@ async def firetv_launch(request: Request):
     timing = LAUNCH_TIMING.get(svc, LAUNCH_TIMING["default"])
 
     async with httpx.AsyncClient() as client:
+        # Smart launch: if the target app is already foreground, just deep-link — don't restart it.
+        if deep_link and pkg:
+            fg = await get_resumed_activity(client)
+            if pkg in (fg or ""):
+                await ha_adb(client, f'am start -a android.intent.action.VIEW -d "{deep_link}" {pkg}')
+                return {"ok": True, "service": svc, "package": pkg, "already_running": True, "deep_linked": True, "deep_link": deep_link}
         await ha_call(client, "media_player", "turn_on", {"entity_id": FIRETV_ENT})
         await asyncio.sleep(2.0)
         await ha_adb(client, f"am force-stop {pkg}")
@@ -725,6 +732,38 @@ async def firetv_command(request: Request):
             keycode = key_map.get(cmd, cmd)
             await ha_adb(client, f"input keyevent {keycode}")
     return {"ok": True}
+
+# ── Power (Fire TV + LG TV) ──────────────────────────────────────────────────
+async def _ha_state(client, ent):
+    try:
+        r = await client.get(f"{HA_URL}/api/states/{ent}",
+                             headers={"Authorization": f"Bearer {HA_TOKEN}"}, timeout=10)
+        return r.json().get("state") if r.status_code == 200 else None
+    except Exception:
+        return None
+
+def _is_on(state):
+    return state not in (None, "off", "unavailable", "standby", "idle")
+
+@app.get("/api/power/state")
+async def power_state():
+    async with httpx.AsyncClient() as client:
+        f = await _ha_state(client, FIRETV_ENT)
+        l = await _ha_state(client, LG_ENT)
+    return {"firetv": f, "lg": l, "on": _is_on(f) or _is_on(l)}
+
+@app.post("/api/power")
+async def power(request: Request):
+    body = await request.json()
+    action = body.get("action", "toggle")
+    async with httpx.AsyncClient() as client:
+        if action == "toggle":
+            f = await _ha_state(client, FIRETV_ENT)
+            l = await _ha_state(client, LG_ENT)
+            action = "off" if (_is_on(f) or _is_on(l)) else "on"
+        service = "turn_on" if action == "on" else "turn_off"
+        await ha_call(client, "media_player", service, {"entity_id": [FIRETV_ENT, LG_ENT]})
+    return {"ok": True, "action": action}
 
 # ── Sonos ─────────────────────────────────────────────────────────────────
 @app.get("/api/sonos/state")

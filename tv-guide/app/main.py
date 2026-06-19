@@ -25,7 +25,7 @@ TMDB_BASE   = "https://api.themoviedb.org/3"
 
 # Profile definitions
 APP_PROFILES = {
-    "netflix":   ["Justin", "justinuras", "Vicki", "Tony", "Kristen"],
+    "netflix":   ["justinuras", "Vicki uras", "Tony", "Justin", "Kristen"],
     "disney":    ["Justin", "Vicki", "Tony", "Kristen"],
     "peacock":   ["Justin", "Tony", "Kids Profile"],
     "discovery": ["Justin", "Kristen"],
@@ -75,6 +75,14 @@ LAUNCH_TIMING = {
     "hulu":      {"pre_profile": 5,  "post_profile": 10},
     "disney":    {"pre_profile": 7,  "post_profile": 18},
     "peacock":   {"pre_profile": 6,  "post_profile": 12},
+}
+
+# Per-app profile navigation. "blind" = can't read the screen (Netflix), so
+# slam the cursor to a known edge then step a fixed number. Apps not listed here
+# default to accessibility tap-by-name via the helper.
+PROFILE_NAV = {
+    "netflix": {"method": "blind", "slam_key": 19, "slam_count": 6,
+                "step_key": 20, "select_key": 23, "gap": 0.45, "pre": 6, "post": 8},
 }
 
 # ── Persistence ───────────────────────────────────────────────────────────
@@ -655,6 +663,67 @@ async def helper_proxy(path: str, request: Request):
         return JSONResponse(r.json(), status_code=r.status_code)
     except Exception:
         return JSONResponse({"raw": r.text[:2000]}, status_code=r.status_code)
+
+# ── Play: reliable launch + profile select + deep-link (via helper) ──────────
+@app.post("/api/firetv/play")
+async def firetv_play(request: Request):
+    body = await request.json()
+    svc = body.get("service")
+    show_id = body.get("showId")
+    profile_index = body.get("profileIndex")
+    profile_name = body.get("profile")
+    launch = APP_LAUNCH.get(svc)
+    if not launch:
+        raise HTTPException(400, f"Unknown service: {svc}")
+    pkg = launch[0]
+    profiles = APP_PROFILES.get(svc, [])
+    if (profile_index is None) and profile_name and profile_name in profiles:
+        profile_index = profiles.index(profile_name)
+    deep_link = None
+    if show_id:
+        deep_link = load_data().get("deep_links", {}).get(str(show_id))
+    nav = PROFILE_NAV.get(svc)
+    used_helper = True
+
+    async with httpx.AsyncClient() as client:
+        # 1) Reliable native launch via the helper (fall back to ADB).
+        try:
+            r = await client.post(f"{HELPER_URL}/launch", json={"package": pkg}, timeout=15)
+            used_helper = (r.status_code == 200)
+        except Exception:
+            used_helper = False
+        if not used_helper:
+            await ha_call(client, "media_player", "turn_on", {"entity_id": FIRETV_ENT})
+            await asyncio.sleep(2)
+            await ha_adb(client, f"monkey -p {pkg} 1")
+
+        # 2) Profile selection.
+        if profile_index is not None and profile_index >= 0 and len(profiles) > 1:
+            if nav and nav.get("method") == "blind":
+                await asyncio.sleep(nav.get("pre", 6))
+                gap = nav.get("gap", 0.45)
+                seq = ("input keyevent %d; sleep %s; " % (nav["slam_key"], gap)) * nav["slam_count"]
+                seq += ("input keyevent %d; sleep %s; " % (nav["step_key"], gap)) * int(profile_index)
+                seq += "input keyevent %d" % nav["select_key"]
+                await ha_adb(client, seq)
+                await asyncio.sleep(nav.get("post", 8))
+            else:
+                name = profiles[profile_index] if profile_index < len(profiles) else (profile_name or "")
+                await asyncio.sleep(5)
+                try:
+                    await client.post(f"{HELPER_URL}/selectprofile", json={"name": name}, timeout=15)
+                except Exception:
+                    pass
+                await asyncio.sleep(4)
+
+        # 3) Deep-link into the title.
+        if deep_link:
+            try:
+                await client.post(f"{HELPER_URL}/deeplink", json={"package": pkg, "url": deep_link}, timeout=15)
+            except Exception:
+                await ha_adb(client, f'am start -a android.intent.action.VIEW -d "{deep_link}" {pkg}')
+
+    return {"ok": True, "service": svc, "profile_index": profile_index, "helper": used_helper, "deep_link": deep_link}
 
 # ── Archive / remove / restore ───────────────────────────────────────────────
 async def _sonarr_add(client, tvdb, monitor="all", search=False):

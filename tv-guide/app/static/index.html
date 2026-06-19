@@ -450,7 +450,18 @@ async function toggleWatched(sid,epId,isW){
   const row=document.getElementById(`ep-${epId}`); if(row){ row.classList.toggle('watched',!isW); const b=row.querySelector('.ep-tick'); if(b){ b.classList.toggle('on',!isW); } }
   const o=allShows.find(s=>s.id===sid); if(o) recomputeNextUp(o); _progressDirty=true;
 }
-function resumeShow(showId){ const svc=getSvc(showId); if(!svc){ openModal(showId); toast('Pick a streaming service first','error'); return; } launchShow(showId,svc); }
+function resumeShow(showId){ const svc=getSvc(showId); if(!svc){ openModal(showId); toast('Pick a streaming service first','error'); return; } playShow(showId,svc); }
+function playShow(showId, svc){
+  const profiles = appData.profiles?.[svc] || [];
+  if(profiles.length > 1){ showProfilePicker(svc, (idx)=> doPlay(showId, svc, idx)); }
+  else { doPlay(showId, svc, -1); }
+}
+async function doPlay(showId, svc, idx){
+  const name = (appData.profiles?.[svc]||[])[idx] || '';
+  toast(idx>=0 ? `Opening for ${name}…` : `Launching ${SVCS[svc]||svc}…`);
+  try{ await post('api/firetv/play', {service:svc, showId:showId, profileIndex:(idx==null?-1:idx)}); toast(`▶ Playing on ${SVCS[svc]||svc}`); closeModal(); }
+  catch(e){ toast('Play failed: '+e.message,'error'); }
+}
 async function launchShow(sid,svc,epId){
   toast(`Launching ${SVCS[svc]||svc}…`);
   let res;

@@ -154,8 +154,14 @@
   .vbar>i{display:block;height:100%;width:42%;background:var(--violet)}
   .sep{width:1px;height:34px;background:var(--line);flex-shrink:0}
   @media(max-width:720px){
+    body{padding-bottom:176px}
     nav{padding:14px 16px 6px;gap:10px}.seg{display:none}main{padding:8px 16px 0}.filters{padding:6px 16px}
     .cw{grid-auto-columns:282px}.pad{display:none}.dlbl{display:none}
+    /* Let the dock wrap so every Sonos / Fire TV button stays on-screen */
+    .dock{flex-wrap:wrap;justify-content:center;gap:8px;max-width:96vw;padding:10px}
+    .dgrp{flex-wrap:wrap;justify-content:center}
+    .sep{display:none}
+    .vbar{width:70px}
   }
   /* ADD SHOW */
   .add-backdrop{position:fixed;inset:0;z-index:240;background:rgba(0,0,0,.8);display:flex;align-items:flex-start;justify-content:center;padding:48px 18px;overflow-y:auto;opacity:0;pointer-events:none;transition:opacity .2s}

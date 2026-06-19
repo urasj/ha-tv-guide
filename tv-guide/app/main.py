@@ -81,8 +81,8 @@ LAUNCH_TIMING = {
 # slam the cursor to a known edge then step a fixed number. Apps not listed here
 # default to accessibility tap-by-name via the helper.
 PROFILE_NAV = {
-    "netflix": {"method": "blind", "slam_key": 19, "slam_count": 8,
-                "step_key": 20, "select_key": 23, "gap": 0.5, "pre": 12, "post": 8},
+    "netflix": {"method": "blind", "slam_key": 19, "slam_count": 8, "step_key": 20,
+                "select_key": 23, "gap": 0.5, "settle": 1.6, "pre": 12, "post": 8},
 }
 
 # ── Persistence ───────────────────────────────────────────────────────────
@@ -698,7 +698,7 @@ async def _do_play(svc, pkg, profiles, profile_index, nav, deep_link):
                 gap = nav.get("gap", 0.45)
                 seq = ("input keyevent %d; sleep %s; " % (nav["slam_key"], gap)) * nav["slam_count"]
                 seq += ("input keyevent %d; sleep %s; " % (nav["step_key"], gap)) * int(profile_index)
-                seq += "input keyevent %d" % nav["select_key"]
+                seq += "sleep %s; input keyevent %d" % (nav.get("settle", 1.5), nav["select_key"])
                 try:
                     await ha_adb(client, seq)
                 except Exception:

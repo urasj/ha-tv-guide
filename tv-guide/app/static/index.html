@@ -542,8 +542,8 @@ function updateSonosUI(){
 }
 async function sonosCmd(cmd){
   try{
-    if(cmd==='volume_up'){ sonosState.volume=Math.min(1,Math.round((sonosState.volume+.05)*100)/100); updateSonosUI(); await post('api/sonos/command',{command:cmd,current:sonosState.volume}); }
-    else if(cmd==='volume_down'){ sonosState.volume=Math.max(0,Math.round((sonosState.volume-.05)*100)/100); updateSonosUI(); await post('api/sonos/command',{command:cmd,current:sonosState.volume}); }
+    if(cmd==='volume_up'){ const cur=sonosState.volume; sonosState.volume=Math.min(1,Math.round((cur+.05)*100)/100); updateSonosUI(); await post('api/sonos/command',{command:cmd,current:cur}); }
+    else if(cmd==='volume_down'){ const cur=sonosState.volume; sonosState.volume=Math.max(0,Math.round((cur-.05)*100)/100); updateSonosUI(); await post('api/sonos/command',{command:cmd,current:cur}); }
     else if(cmd==='mute'){ const nm=!sonosState.muted; sonosState.muted=nm; updateSonosUI(); await post('api/sonos/command',{command:cmd,muted:!nm}); }
     else if(cmd==='speech_enhancement'){ const ns=!sonosState.speech; sonosState.speech=ns; updateSonosUI(); await post('api/sonos/command',{command:cmd,state:ns}); }
     else if(cmd==='night_mode'){ const nn=!sonosState.night; sonosState.night=nn; updateSonosUI(); await post('api/sonos/command',{command:cmd,state:nn}); }

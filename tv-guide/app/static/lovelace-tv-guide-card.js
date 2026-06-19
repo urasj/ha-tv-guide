@@ -28,6 +28,7 @@ class TvGuideCard extends HTMLElement {
 
   async _poll() {
     try {
+      this._state.error = null;
       const [sonos, data, shows] = await Promise.all([
         this._api('/api/sonos/state'),
         this._api('/api/data'),
@@ -84,14 +85,17 @@ class TvGuideCard extends HTMLElement {
 
   _render() {
     const s = this._state;
-    const { sonos = {}, shows = [], loading, error, pickState } = s;
+    const { sonos = {}, shows = [], loading, error } = s;
     this._pickState = this._pickState || null;
     const vol = Math.round((sonos.volume || 0) * 100);
 
-    const SVCS = {
+    // Prefer the backend's service list (from /api/status) so this never drifts
+    // from main.py's SVCS; fall back to a complete local copy before it loads.
+    const SVCS = (s.status && s.status.services) || {
       netflix:'Netflix',hulu:'Hulu',disney:'Disney+',max:'Max',
-      peacock:'Peacock',discovery:'Discovery+',tubi:'Tubi',prime:'Prime',
-      pluto:'Pluto TV',plex:'Plex',youtube:'YouTube',paramount:'Paramount+',
+      peacock:'Peacock',discovery:'Discovery+',tubi:'Tubi',pluto:'Pluto TV',
+      youtube:'YouTube',prime:'Prime Video',plex:'Plex',paramount:'Paramount+',
+      apple:'Apple TV+',amc:'AMC+',shudder:'Shudder',crunchyroll:'Crunchyroll',starz:'Starz',
     };
 
     const styles = `
@@ -100,6 +104,8 @@ class TvGuideCard extends HTMLElement {
       .section { padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,.08); }
       .section:last-child { border-bottom: none; }
       .label { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--secondary-text-color, #7070a0); margin-bottom: 10px; font-weight: 700; }
+      .banner-error { color: #ff6b85; font-size: 12px; font-weight: 600; }
+      .banner-loading { color: var(--secondary-text-color, #7070a0); font-size: 12px; }
       /* Fire TV */
       .ftv-grid { display: grid; grid-template-columns: repeat(5,1fr); gap: 6px; margin-bottom: 8px; }
       .ftv-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 6px; }
@@ -166,6 +172,8 @@ class TvGuideCard extends HTMLElement {
     this.shadowRoot.innerHTML = `
       <style>${styles}</style>
       <div class="card">
+        ${error ? `<div class="section banner-error">⚠ ${error}</div>`
+                : (loading ? `<div class="section banner-loading">Loading…</div>` : '')}
         <!-- Fire TV -->
         <div class="section">
           <div class="label">🔥 Fire TV</div>

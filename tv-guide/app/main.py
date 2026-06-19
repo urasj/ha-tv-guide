@@ -23,6 +23,12 @@ HELPER_URL  = os.environ.get("HELPER_URL", "http://192.168.7.211:8472").rstrip("
 INGRESS_PATH = os.environ.get("INGRESS_PATH", "").rstrip("/")
 TMDB_BASE   = "https://api.themoviedb.org/3"
 
+# HA's Sonos integration names the sound switches after the media_player's
+# object_id (e.g. media_player.living_room -> switch.living_room_*).
+_SONOS_OBJ          = SONOS_ENT.split(".", 1)[-1]
+SONOS_SPEECH_SWITCH = f"switch.{_SONOS_OBJ}_speech_enhancement"
+SONOS_NIGHT_SWITCH  = f"switch.{_SONOS_OBJ}_night_sound"
+
 # Profile definitions
 APP_PROFILES = {
     "netflix":   ["justinuras", "Vicki uras", "Tony", "Justin", "Kristen"],
@@ -1042,8 +1048,8 @@ async def sonos_state():
         s = r.json()
         attrs = s.get("attributes", {})
         # Fetch speech enhancement and night sound switch states
-        se_r = await client.get(f"{HA_URL}/api/states/switch.living_room_speech_enhancement", headers=headers, timeout=10)
-        ns_r = await client.get(f"{HA_URL}/api/states/switch.living_room_night_sound", headers=headers, timeout=10)
+        se_r = await client.get(f"{HA_URL}/api/states/{SONOS_SPEECH_SWITCH}", headers=headers, timeout=10)
+        ns_r = await client.get(f"{HA_URL}/api/states/{SONOS_NIGHT_SWITCH}", headers=headers, timeout=10)
         return {
             "state": s.get("state"),
             "volume": attrs.get("volume_level", 0),
@@ -1058,10 +1064,10 @@ async def sonos_command(request: Request):
     cmd = body.get("command")
     async with httpx.AsyncClient() as client:
         if cmd == "volume_up":
-            vol = round(min(1.0, float(body.get("current", 0.3))), 2)
+            vol = round(min(1.0, float(body.get("current", 0.3)) + 0.05), 2)
             await ha_call(client, "media_player", "volume_set", {"entity_id": SONOS_ENT, "volume_level": vol})
         elif cmd == "volume_down":
-            vol = round(max(0.0, float(body.get("current", 0.3))), 2)
+            vol = round(max(0.0, float(body.get("current", 0.3)) - 0.05), 2)
             await ha_call(client, "media_player", "volume_set", {"entity_id": SONOS_ENT, "volume_level": vol})
         elif cmd == "mute":
             # body.muted is current state, we want to toggle so pass NOT current
@@ -1069,10 +1075,10 @@ async def sonos_command(request: Request):
         elif cmd == "speech_enhancement":
             # body.state is the NEW desired state
             svc = "turn_on" if body.get("state", False) else "turn_off"
-            await ha_call(client, "switch", svc, {"entity_id": "switch.living_room_speech_enhancement"})
+            await ha_call(client, "switch", svc, {"entity_id": SONOS_SPEECH_SWITCH})
         elif cmd == "night_mode":
             svc = "turn_on" if body.get("state", False) else "turn_off"
-            await ha_call(client, "switch", svc, {"entity_id": "switch.living_room_night_sound"})
+            await ha_call(client, "switch", svc, {"entity_id": SONOS_NIGHT_SWITCH})
     return {"ok": True}
 
 if __name__ == "__main__":

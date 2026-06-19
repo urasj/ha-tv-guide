@@ -5,724 +5,205 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TV Guide</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --bg: #0a0a0f;
-    --surface: #13131a;
-    --surface2: #1c1c26;
-    --border: rgba(255,255,255,0.07);
-    --text: #e8e8f0;
-    --muted: #6b6b80;
-    --accent: #e50914;
-    --accent2: #f5a623;
-    --card-w: 180px;
-    --card-h: 270px;
-    --radius: 6px;
+  :root{
+    --bg:#0c0e13; --panel:#151823; --panel2:#1d2130; --line:rgba(255,255,255,.07);
+    --text:#eef0f6; --muted:#8b90a3; --teal:#2dd4bf; --violet:#8b7cf6; --accent:#2dd4bf;
+  }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;min-height:100vh;padding-bottom:108px;overflow-x:hidden}
+  h1,h2,h3,.brand,.big-title,.sh h2{font-family:'Space Grotesk',sans-serif}
+  /* NAV */
+  nav{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:16px;padding:16px 30px 8px;background:linear-gradient(to bottom,rgba(12,14,19,.96),rgba(12,14,19,.6));backdrop-filter:blur(10px)}
+  .brand{display:flex;align-items:center;gap:10px;font-size:20px;font-weight:700}
+  .brand .b-dot{width:11px;height:11px;border-radius:50%;background:var(--teal);box-shadow:0 0 14px var(--teal)}
+  .seg{display:flex;gap:4px;background:var(--panel);padding:4px;border-radius:12px;border:1px solid var(--line)}
+  .seg button{padding:7px 14px;border-radius:9px;color:var(--muted);font-size:13px;font-weight:600;cursor:pointer;background:none;border:none;font-family:'Inter'}
+  .seg button.on{background:var(--panel2);color:#fff}
+  .seg button:hover{color:#fff}
+  .spacer{flex:1}
+  .ico{width:40px;height:40px;border-radius:11px;border:1px solid var(--line);background:var(--panel);color:#fff;font-size:16px;cursor:pointer}
+  .ico:hover{background:var(--panel2)}
+  /* FILTER CHIPS */
+  .filters{display:flex;gap:8px;padding:6px 30px 4px;overflow-x:auto;scrollbar-width:none}
+  .filters::-webkit-scrollbar{display:none}
+  .fchip{display:flex;align-items:center;gap:7px;padding:7px 13px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--muted);font-size:13px;font-weight:500;white-space:nowrap;cursor:pointer}
+  .fchip.on{border-color:var(--teal);color:#fff;background:rgba(45,212,191,.1)}
+  .fdot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+  /* SECTIONS */
+  main{padding:8px 30px 0}
+  .sh{display:flex;align-items:baseline;gap:10px;margin:24px 0 14px}
+  .sh h2{font-size:19px;font-weight:600}
+  .sh .ct{font-size:13px;color:var(--muted)}
+  /* CONTINUE = landscape resume cards */
+  .cw{display:grid;grid-auto-flow:column;grid-auto-columns:340px;gap:16px;overflow-x:auto;scrollbar-width:none;padding-bottom:4px;cursor:grab;user-select:none}
+  .cw:active{cursor:grabbing}
+  .cw::-webkit-scrollbar{display:none}
+  .bcard{position:relative;height:194px;border-radius:18px;overflow:hidden;border:1px solid var(--line);cursor:pointer;display:flex;flex-direction:column;justify-content:flex-end;padding:18px;background-size:cover;background-position:center 25%}
+  .bcard::after{content:'';position:absolute;inset:0;background:linear-gradient(105deg,rgba(8,9,13,.94) 0 40%,rgba(8,9,13,.25) 86%)}
+  .bcard>*{position:relative;z-index:2}
+  .bc-svc{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:#fff;margin-bottom:auto}
+  .bc-title{font-family:'Space Grotesk';font-size:24px;font-weight:600;line-height:1.02;max-width:90%}
+  .bc-next{font-size:13px;color:var(--teal);font-weight:600;margin:6px 0 10px}
+  .bc-prog{height:5px;background:rgba(255,255,255,.18);border-radius:3px;overflow:hidden;margin-bottom:12px;width:82%}
+  .bc-prog>i{display:block;height:100%;background:var(--teal)}
+  .bc-actions{display:flex;gap:8px;flex-wrap:wrap}
+  .mini{padding:8px 14px;border-radius:10px;border:none;font-family:'Inter';font-size:13px;font-weight:600;cursor:pointer}
+  .mini-p{background:var(--teal);color:#062b26}
+  .mini-g{background:rgba(255,255,255,.13);color:#fff}
+  .mini-g:hover{background:rgba(255,255,255,.22)}
+  /* POSTER GRID */
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(146px,1fr));gap:16px}
+  .pcard{cursor:pointer}
+  .pwrap{position:relative;aspect-ratio:2/3;border-radius:14px;overflow:hidden;border:1px solid var(--line);display:flex;align-items:flex-end;padding:12px;background:var(--panel2)}
+  .pwrap>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  .pwrap::after{content:'';position:absolute;inset:0;background:linear-gradient(to top,rgba(8,9,13,.92),transparent 58%)}
+  .pwrap b{position:relative;z-index:2;font-family:'Space Grotesk';font-size:16px;font-weight:600;line-height:1.08}
+  .ptag{position:absolute;top:10px;left:10px;z-index:3;font-size:10px;font-weight:600;padding:4px 9px;border-radius:999px;background:rgba(8,9,13,.62);display:flex;align-items:center;gap:6px;color:#fff}
+  .ring{position:absolute;top:8px;right:8px;z-index:3}
+  .pnext{margin-top:9px;font-size:12px;color:var(--teal);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pmeta{margin-top:9px;font-size:12px;color:var(--muted);display:flex;justify-content:space-between}
+  /* EMPTY / SKELETON */
+  .empty{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:50vh;gap:14px;color:var(--muted);text-align:center}
+  .empty .ei{font-size:54px;opacity:.4}
+  .empty h2{font-size:24px;color:var(--text)}
+  .skرow{display:grid;grid-template-columns:repeat(auto-fill,minmax(146px,1fr));gap:16px}
+  .skel{aspect-ratio:2/3;border-radius:14px;background:linear-gradient(90deg,var(--panel) 25%,var(--panel2) 50%,var(--panel) 75%);background-size:200% 100%;animation:sh 1.4s infinite}
+  @keyframes sh{to{background-position:-200% 0}}
+  /* MODAL */
+  .modal-backdrop{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.8);display:flex;align-items:flex-start;justify-content:center;padding:36px 18px;overflow-y:auto;opacity:0;pointer-events:none;transition:opacity .2s}
+  .modal-backdrop.open{opacity:1;pointer-events:all}
+  .modal{background:var(--panel);border-radius:18px;width:100%;max-width:840px;overflow:hidden;border:1px solid var(--line);transform:translateY(16px);transition:transform .25s}
+  .modal-backdrop.open .modal{transform:none}
+  .modal-hero{position:relative;height:300px;overflow:hidden}
+  .modal-hero img{width:100%;height:100%;object-fit:cover;object-position:center 20%}
+  .modal-hero::after{content:'';position:absolute;inset:0;background:linear-gradient(to top,var(--panel),transparent 62%)}
+  .modal-hero-info{position:absolute;bottom:22px;left:26px;right:26px;z-index:2;display:flex;align-items:flex-end;gap:18px}
+  .modal-poster{width:78px;height:117px;border-radius:10px;object-fit:cover;flex-shrink:0}
+  .modal-title{font-family:'Space Grotesk';font-size:32px;font-weight:600;line-height:1;margin-bottom:7px}
+  .modal-meta{display:flex;gap:10px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin-bottom:10px}
+  .modal-actions{display:flex;gap:8px;flex-wrap:wrap}
+  .btn{display:inline-flex;align-items:center;gap:7px;padding:10px 16px;border-radius:11px;border:none;font-family:'Inter';font-size:14px;font-weight:600;cursor:pointer}
+  .btn-primary{background:var(--teal);color:#062b26}
+  .btn-ghost{background:rgba(255,255,255,.12);color:#fff}
+  .btn-ghost:hover{background:rgba(255,255,255,.2)}
+  .modal-close{position:absolute;top:14px;right:14px;z-index:3;width:34px;height:34px;background:rgba(0,0,0,.55);border:1px solid var(--line);border-radius:50%;color:#fff;font-size:17px;cursor:pointer}
+  .modal-body{padding:22px 26px 26px}
+  .modal-overview{font-size:14px;line-height:1.7;color:rgba(238,240,246,.78);margin-bottom:18px}
+  .season-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+  .season-tab{padding:6px 14px;border-radius:10px;border:1px solid var(--line);background:none;color:var(--muted);font-family:'Inter';font-size:13px;cursor:pointer}
+  .season-tab.active{background:var(--teal);border-color:var(--teal);color:#062b26;font-weight:600}
+  .service-override{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px;align-items:center}
+  .service-override-label{font-size:12px;color:var(--muted);margin-right:4px}
+  .svc-btn{padding:5px 12px;border-radius:8px;border:1px solid var(--line);background:none;color:var(--muted);font-family:'Inter';font-size:12px;font-weight:600;cursor:pointer}
+  .svc-btn.active{background:var(--violet);border-color:var(--violet);color:#fff}
+  .ep-list{display:flex;flex-direction:column;gap:2px}
+  .ep-row{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:10px}
+  .ep-row:hover{background:var(--panel2)}
+  .ep-row.watched{opacity:.45}
+  .ep-num{font-size:12px;color:var(--muted);font-weight:600;min-width:30px;text-align:right}
+  .ep-info{flex:1;min-width:0}
+  .ep-name{font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ep-air{font-size:11px;color:var(--muted);margin-top:2px}
+  .ep-tick{width:26px;height:26px;border-radius:50%;border:1px solid var(--line);background:none;color:var(--muted);font-size:12px;cursor:pointer;flex-shrink:0}
+  .ep-tick.on{background:var(--teal);border-color:var(--teal);color:#062b26}
+  .ep-watch{padding:6px 12px;border-radius:8px;background:var(--teal);color:#062b26;border:none;font-family:'Inter';font-size:12px;font-weight:600;cursor:pointer;flex-shrink:0}
+  /* SCAN TOAST + TOASTS */
+  .scan-modal{position:fixed;bottom:96px;right:24px;z-index:300;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px 17px;font-size:13px;min-width:210px;transform:translateY(20px);opacity:0;transition:all .3s;display:flex;align-items:center;gap:10px}
+  .scan-modal.show{transform:none;opacity:1}
+  .spin{animation:spin 1s linear infinite;display:inline-block}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  #toast-container{position:fixed;bottom:96px;left:50%;transform:translateX(-50%);z-index:500;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none}
+  .toast{background:var(--panel2);border:1px solid var(--line);color:#fff;padding:10px 20px;border-radius:10px;font-size:13px;font-weight:500;animation:ti .2s ease,to 0.3s ease 2.5s forwards}
+  .toast.error{border-color:#e24b4a;color:#ff8f8f}
+  @keyframes ti{from{opacity:0;transform:translateY(10px)}}
+  @keyframes to{to{opacity:0;transform:translateY(-10px)}}
+  /* OVERLAYS */
+  .handoff-overlay,.prof-overlay{position:fixed;inset:0;z-index:450;background:rgba(8,9,13,.92);display:flex;align-items:center;justify-content:center;animation:fi .25s}
+  @keyframes fi{from{opacity:0}}
+  .handoff-box,.prof-box{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:30px 34px;text-align:center;max-width:460px;width:90%}
+  .handoff-title,.prof-title{font-family:'Space Grotesk';font-size:24px;font-weight:600;margin-bottom:8px}
+  .handoff-sub,.prof-app{font-size:14px;color:var(--muted);line-height:1.6;margin-bottom:22px}
+  .handoff-remote{display:grid;grid-template-areas:". up ." "left ok right" ". down ." "back home .";gap:8px;justify-content:center;margin-bottom:22px}
+  .hr-up{grid-area:up}.hr-down{grid-area:down}.hr-left{grid-area:left}.hr-right{grid-area:right}.hr-ok{grid-area:ok}.hr-back{grid-area:back}.hr-home{grid-area:home}
+  .handoff-ready{width:100%;padding:13px;background:var(--teal);border:none;border-radius:12px;color:#062b26;font-family:'Space Grotesk';font-size:17px;font-weight:600;cursor:pointer;margin-bottom:10px}
+  .handoff-ready:disabled{opacity:.6}
+  .handoff-cancel,.prof-cancel{background:none;border:none;color:var(--muted);font-size:13px;cursor:pointer}
+  .handoff-pulse{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--teal);margin-right:6px;animation:pl 1.5s infinite}
+  @keyframes pl{0%,100%{opacity:1}50%{opacity:.4}}
+  .prof-grid{display:flex;flex-wrap:wrap;gap:14px;justify-content:center;margin-bottom:18px}
+  .prof-btn{width:86px;height:86px;border-radius:14px;border:2px solid var(--line);background:var(--panel2);color:#fff;cursor:pointer;font-family:'Inter';font-size:13px;font-weight:500;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}
+  .prof-btn:hover{border-color:var(--teal)}
+  .prof-avatar{font-size:28px}
+  /* DOCK */
+  .dock{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:14px;background:rgba(21,24,35,.95);backdrop-filter:blur(16px);border:1px solid var(--line);border-radius:18px;padding:10px 16px;max-width:94vw;overflow-x:auto;scrollbar-width:none}
+  .dock::-webkit-scrollbar{display:none}
+  .dgrp{display:flex;align-items:center;gap:8px}
+  .dlbl{font-family:'Space Grotesk';font-size:11px;font-weight:600;letter-spacing:.5px;color:var(--muted)}
+  .pad{display:grid;grid-template-columns:repeat(3,32px);grid-template-rows:repeat(3,32px);gap:3px;place-items:center}
+  .pk{width:32px;height:32px;border-radius:9px;background:var(--panel2);color:#fff;border:none;font-size:14px;cursor:pointer}
+  .pk:hover{background:#272b3b}
+  .pk.c{background:var(--teal);color:#062b26;font-size:11px;font-weight:700;border-radius:50%}
+  .db{width:40px;height:40px;border-radius:11px;background:var(--panel2);color:#fff;border:none;font-size:16px;cursor:pointer;flex-shrink:0}
+  .db:hover{background:#272b3b}
+  .db.on{background:var(--violet);color:#fff}
+  .vbar{width:96px;height:6px;background:rgba(255,255,255,.16);border-radius:3px;overflow:hidden}
+  .vbar>i{display:block;height:100%;width:42%;background:var(--violet)}
+  .sep{width:1px;height:34px;background:var(--line);flex-shrink:0}
+  @media(max-width:720px){
+    nav{padding:14px 16px 6px;gap:10px}.seg{display:none}main{padding:8px 16px 0}.filters{padding:6px 16px}
+    .cw{grid-auto-columns:282px}.pad{display:none}.dlbl{display:none}
   }
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  html { scroll-behavior: smooth; }
-
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'DM Sans', sans-serif;
-    min-height: 100vh;
-    overflow-x: hidden;
-  }
-
-  /* ── NAV ── */
-  nav {
-    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-    display: flex; align-items: center; gap: 24px;
-    padding: 0 32px;
-    height: 60px;
-    background: linear-gradient(to bottom, rgba(0,0,0,0.9) 0%, transparent 100%);
-    backdrop-filter: blur(4px);
-    border-bottom: 1px solid var(--border);
-  }
-  .nav-logo {
-    font-family: 'Bebas Neue', sans-serif;
-    font-size: 28px;
-    color: var(--accent);
-    letter-spacing: 2px;
-    flex-shrink: 0;
-  }
-  .nav-actions {
-    margin-left: auto;
-    display: flex; align-items: center; gap: 10px;
-  }
-  .btn {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 7px 16px;
-    border-radius: 4px;
-    border: none; cursor: pointer;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 13px; font-weight: 500;
-    transition: all 0.15s;
-  }
-  .btn-primary { background: var(--accent); color: #fff; }
-  .btn-primary:hover { background: #ff0f1e; }
-  .btn-ghost { background: rgba(255,255,255,0.08); color: var(--text); border: 1px solid var(--border); }
-  .btn-ghost:hover { background: rgba(255,255,255,0.14); }
-  .btn-icon { padding: 7px 10px; font-size: 16px; }
-  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
-
-  /* ── HERO ── */
-  #hero {
-    position: relative;
-    height: 520px;
-    overflow: hidden;
-    margin-bottom: 8px;
-  }
-  #hero-bg {
-    position: absolute; inset: 0;
-    background-size: cover; background-position: center 20%;
-    transition: opacity 0.6s;
-  }
-  #hero-bg::after {
-    content: '';
-    position: absolute; inset: 0;
-    background: linear-gradient(
-      to right, rgba(10,10,15,0.95) 0%, rgba(10,10,15,0.6) 50%, transparent 100%
-    ),
-    linear-gradient(to top, rgba(10,10,15,1) 0%, transparent 40%);
-  }
-  #hero-content {
-    position: relative; z-index: 2;
-    padding: 120px 48px 48px;
-    max-width: 560px;
-  }
-  #hero-badge {
-    display: inline-block;
-    padding: 3px 10px;
-    background: var(--accent);
-    border-radius: 3px;
-    font-size: 11px; font-weight: 600; letter-spacing: 1.5px;
-    text-transform: uppercase;
-    margin-bottom: 12px;
-  }
-  #hero-title {
-    font-family: 'Bebas Neue', sans-serif;
-    font-size: 52px; line-height: 1;
-    margin-bottom: 12px;
-    text-shadow: 0 2px 20px rgba(0,0,0,0.5);
-  }
-  #hero-meta {
-    display: flex; gap: 12px; align-items: center;
-    font-size: 13px; color: var(--muted);
-    margin-bottom: 14px;
-  }
-  #hero-meta span { display: flex; align-items: center; gap: 4px; }
-  #hero-overview {
-    font-size: 14px; line-height: 1.6; color: rgba(232,232,240,0.8);
-    margin-bottom: 20px;
-    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-  #hero-actions { display: flex; gap: 10px; }
-  #hero-actions .btn { padding: 10px 22px; font-size: 14px; }
-
-  /* ── MAIN ── */
-  main { padding: 0 32px 160px; }
-
-  /* ── SECTION ROWS ── */
-  .section { margin-bottom: 40px; }
-  .section-header {
-    display: flex; align-items: center; gap: 16px;
-    margin-bottom: 16px;
-  }
-  .section-title {
-    font-family: 'Bebas Neue', sans-serif;
-    font-size: 20px; letter-spacing: 1px; color: var(--text);
-  }
-  .section-count {
-    font-size: 12px; color: var(--muted);
-    background: var(--surface2); padding: 2px 8px; border-radius: 20px;
-  }
-
-  .row-scroll {
-    display: flex; gap: 12px;
-    overflow-x: auto;
-    overflow-y: visible;
-    padding-bottom: 8px;
-    scroll-snap-type: x mandatory;
-    -ms-overflow-style: none; scrollbar-width: none;
-    touch-action: pan-x;
-    cursor: grab;
-    user-select: none;
-    -webkit-overflow-scrolling: touch;
-  }
-  .row-scroll:active { cursor: grabbing; }
-  .row-scroll::-webkit-scrollbar { display: none; }
-
-  /* ── SHOW CARD ── */
-  .show-card {
-    flex-shrink: 0;
-    width: var(--card-w); height: var(--card-h);
-    border-radius: var(--radius);
-    overflow: hidden;
-    cursor: pointer;
-    position: relative;
-    scroll-snap-align: start;
-    transition: transform 0.2s, box-shadow 0.2s;
-    background: var(--surface2);
-  }
-  .show-card:hover {
-    transform: scale(1.06);
-    box-shadow: 0 12px 40px rgba(0,0,0,0.7);
-    z-index: 2;
-  }
-  .show-card img {
-    width: 100%; height: 100%;
-    object-fit: cover;
-    display: block;
-    transition: opacity 0.3s;
-  }
-  .show-card-overlay {
-    position: absolute; inset: 0;
-    background: linear-gradient(to top, rgba(0,0,0,0.95) 0%, transparent 55%);
-    opacity: 0;
-    transition: opacity 0.2s;
-    display: flex; flex-direction: column; justify-content: flex-end;
-    padding: 14px;
-    gap: 6px;
-  }
-  .show-card:hover .show-card-overlay { opacity: 1; }
-  .card-title {
-    font-size: 13px; font-weight: 600; line-height: 1.3;
-  }
-  .card-meta {
-    font-size: 11px; color: var(--muted);
-    display: flex; gap: 8px; align-items: center;
-  }
-  .card-svc {
-    display: inline-flex; align-items: center; gap: 4px;
-    padding: 2px 7px;
-    background: rgba(255,255,255,0.12);
-    border-radius: 3px;
-    font-size: 10px; font-weight: 600; letter-spacing: 0.5px;
-    text-transform: uppercase;
-  }
-  .card-next-ep {
-    font-size: 10px; color: var(--accent2);
-    font-weight: 500;
-  }
-  .card-unwatched-badge {
-    position: absolute; top: 8px; right: 8px;
-    background: var(--accent);
-    color: #fff; font-size: 10px; font-weight: 700;
-    width: 20px; height: 20px; border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-  }
-  .card-no-img {
-    width: 100%; height: 100%;
-    display: flex; flex-direction: column;
-    align-items: center; justify-content: center;
-    gap: 8px; padding: 16px; text-align: center;
-    background: var(--surface2);
-  }
-  .card-no-img-icon { font-size: 40px; opacity: 0.3; }
-  .card-no-img-title { font-size: 13px; font-weight: 500; opacity: 0.7; }
-
-  /* ── MODAL ── */
-  .modal-backdrop {
-    position: fixed; inset: 0; z-index: 200;
-    background: rgba(0,0,0,0.85);
-    display: flex; align-items: flex-start; justify-content: center;
-    padding: 40px 20px;
-    overflow-y: auto;
-    opacity: 0; pointer-events: none;
-    transition: opacity 0.2s;
-  }
-  .modal-backdrop.open { opacity: 1; pointer-events: all; }
-  .modal {
-    background: var(--surface);
-    border-radius: 10px;
-    width: 100%; max-width: 860px;
-    overflow: hidden;
-    transform: translateY(20px);
-    transition: transform 0.25s;
-    border: 1px solid var(--border);
-  }
-  .modal-backdrop.open .modal { transform: translateY(0); }
-  .modal-hero {
-    position: relative; height: 320px; overflow: hidden;
-  }
-  .modal-hero img {
-    width: 100%; height: 100%; object-fit: cover; object-position: center 20%;
-  }
-  .modal-hero::after {
-    content: '';
-    position: absolute; inset: 0;
-    background: linear-gradient(to top, var(--surface) 0%, transparent 60%);
-  }
-  .modal-hero-info {
-    position: absolute; bottom: 24px; left: 28px; right: 28px;
-    z-index: 2;
-    display: flex; align-items: flex-end; gap: 20px;
-  }
-  .modal-poster {
-    width: 80px; height: 120px; border-radius: 4px;
-    object-fit: cover; flex-shrink: 0;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-  }
-  .modal-hero-text { flex: 1; }
-  .modal-title {
-    font-family: 'Bebas Neue', sans-serif;
-    font-size: 36px; line-height: 1;
-    margin-bottom: 6px;
-  }
-  .modal-meta {
-    display: flex; gap: 12px; flex-wrap: wrap;
-    font-size: 13px; color: var(--muted);
-    margin-bottom: 10px;
-  }
-  .modal-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-  .modal-close {
-    position: absolute; top: 16px; right: 16px; z-index: 3;
-    width: 34px; height: 34px;
-    background: rgba(0,0,0,0.6);
-    border: 1px solid var(--border);
-    border-radius: 50%;
-    color: var(--text); font-size: 18px;
-    display: flex; align-items: center; justify-content: center;
-    cursor: pointer;
-  }
-  .modal-close:hover { background: rgba(255,255,255,0.15); }
-
-  .modal-body { padding: 24px 28px 28px; }
-  .modal-overview {
-    font-size: 14px; line-height: 1.7; color: rgba(232,232,240,0.75);
-    margin-bottom: 20px;
-  }
-
-  /* Season tabs */
-  .season-tabs {
-    display: flex; gap: 6px; flex-wrap: wrap;
-    margin-bottom: 16px;
-  }
-  .season-tab {
-    padding: 5px 14px; border-radius: 4px;
-    border: 1px solid var(--border);
-    background: transparent; color: var(--muted);
-    font-family: 'DM Sans', sans-serif;
-    font-size: 13px; cursor: pointer;
-    transition: all 0.15s;
-  }
-  .season-tab.active {
-    background: var(--accent); border-color: var(--accent);
-    color: #fff;
-  }
-  .season-tab:hover:not(.active) { border-color: rgba(255,255,255,0.2); color: var(--text); }
-
-  /* Service override */
-  .service-override {
-    display: flex; gap: 6px; flex-wrap: wrap;
-    margin-bottom: 20px; align-items: center;
-  }
-  .service-override-label { font-size: 12px; color: var(--muted); margin-right: 4px; }
-  .svc-btn {
-    padding: 4px 12px; border-radius: 3px;
-    border: 1px solid var(--border);
-    background: transparent; color: var(--muted);
-    font-family: 'DM Sans', sans-serif;
-    font-size: 12px; font-weight: 600;
-    text-transform: uppercase; letter-spacing: 0.5px;
-    cursor: pointer; transition: all 0.15s;
-  }
-  .svc-btn.active { background: var(--accent2); border-color: var(--accent2); color: #111; }
-  .svc-btn:hover:not(.active) { border-color: rgba(255,255,255,0.25); color: var(--text); }
-
-  /* Episode list */
-  .ep-list { display: flex; flex-direction: column; gap: 2px; }
-  .ep-row {
-    display: flex; align-items: center; gap: 12px;
-    padding: 10px 12px; border-radius: 5px;
-    transition: background 0.15s;
-    cursor: default;
-  }
-  .ep-row:hover { background: var(--surface2); }
-  .ep-row.watched { opacity: 0.45; }
-  .ep-num {
-    font-size: 12px; color: var(--muted); font-weight: 500;
-    min-width: 28px; text-align: right;
-  }
-  .ep-info { flex: 1; min-width: 0; }
-  .ep-name {
-    font-size: 14px; font-weight: 500;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
-  .ep-air {
-    font-size: 11px; color: var(--muted); margin-top: 2px;
-  }
-  .ep-tick {
-    width: 26px; height: 26px; border-radius: 50%;
-    border: 1px solid var(--border);
-    background: transparent; color: var(--muted);
-    font-size: 12px; cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
-    transition: all 0.15s; flex-shrink: 0;
-  }
-  .ep-tick.on { background: #1db954; border-color: #1db954; color: #fff; }
-  .ep-watch {
-    padding: 5px 12px; border-radius: 3px;
-    background: var(--accent); color: #fff;
-    border: none; font-family: 'DM Sans', sans-serif;
-    font-size: 12px; font-weight: 600; cursor: pointer;
-    transition: all 0.15s; flex-shrink: 0;
-  }
-  .ep-watch:hover { background: #ff0f1e; }
-
-  /* ── SCAN MODAL ── */
-  .scan-modal {
-    position: fixed; bottom: 24px; right: 24px; z-index: 300;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 14px 18px;
-    font-size: 13px; color: var(--text);
-    min-width: 220px;
-    transform: translateY(100px);
-    opacity: 0;
-    transition: all 0.3s;
-    display: flex; align-items: center; gap: 10px;
-  }
-  .scan-modal.show { transform: translateY(0); opacity: 1; }
-  .spin { animation: spin 1s linear infinite; display: inline-block; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-
-  /* ── TOAST ── */
-  #toast-container {
-    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
-    z-index: 500; display: flex; flex-direction: column; gap: 8px; align-items: center;
-    pointer-events: none;
-  }
-  .toast {
-    background: var(--surface2); border: 1px solid var(--border);
-    color: var(--text); padding: 10px 20px; border-radius: 6px;
-    font-size: 13px; font-weight: 500;
-    animation: toastIn 0.2s ease, toastOut 0.3s ease 2.5s forwards;
-  }
-  .toast.error { border-color: var(--accent); color: #ff6b6b; }
-  @keyframes toastIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:none; } }
-  @keyframes toastOut { to { opacity:0; transform:translateY(-10px); } }
-
-  /* ── HANDOFF OVERLAY ── */
-  .handoff-overlay {
-    position: fixed; inset: 0; z-index: 450;
-    background: rgba(0,0,0,0.92);
-    display: flex; align-items: center; justify-content: center;
-    animation: fadeIn 0.3s;
-  }
-  .handoff-box {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 32px 36px;
-    text-align: center;
-    max-width: 480px; width: 90%;
-  }
-  .handoff-app-icon { font-size: 48px; margin-bottom: 12px; }
-  .handoff-title {
-    font-family: 'Bebas Neue', sans-serif;
-    font-size: 26px; letter-spacing: 1px; margin-bottom: 8px;
-  }
-  .handoff-sub {
-    font-size: 14px; color: var(--muted); line-height: 1.6; margin-bottom: 24px;
-  }
-  .handoff-remote {
-    display: grid;
-    grid-template-areas:
-      ". up ."
-      "left ok right"
-      ". down ."
-      "back home .";
-    gap: 8px; justify-content: center;
-    margin-bottom: 24px;
-  }
-  .hr-up    { grid-area: up; }
-  .hr-down  { grid-area: down; }
-  .hr-left  { grid-area: left; }
-  .hr-right { grid-area: right; }
-  .hr-ok    { grid-area: ok; }
-  .hr-back  { grid-area: back; }
-  .hr-home  { grid-area: home; }
-  .handoff-remote .remote-btn {
-    width: 48px; height: 48px; font-size: 18px;
-  }
-  .hr-ok { background: var(--surface2); width: 48px; height: 48px; }
-  .handoff-ready {
-    width: 100%;
-    padding: 14px;
-    background: #1db954;
-    border: none; border-radius: 6px;
-    color: #fff; font-family: 'Bebas Neue', sans-serif;
-    font-size: 20px; letter-spacing: 1px;
-    cursor: pointer; transition: all 0.15s;
-    margin-bottom: 10px;
-  }
-  .handoff-ready:hover { background: #1ed760; transform: scale(1.02); }
-  .handoff-cancel {
-    background: none; border: none; color: var(--muted);
-    font-size: 13px; cursor: pointer;
-  }
-  .handoff-cancel:hover { color: var(--text); }
-  .handoff-pulse {
-    display: inline-block;
-    width: 10px; height: 10px; border-radius: 50%;
-    background: var(--accent); margin-right: 8px;
-    animation: pulse 1.5s infinite;
-  }
-  @keyframes pulse {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.4; transform: scale(0.8); }
-  }
-
-  /* ── HANDOFF OVERLAY ── */
-  .handoff-overlay {
-    position: fixed; inset: 0; z-index: 450;
-    background: rgba(0,0,0,0.92);
-    display: flex; align-items: center; justify-content: center;
-    animation: fadeIn 0.3s;
-  }
-  .handoff-box {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 32px 36px;
-    text-align: center;
-    max-width: 480px; width: 90%;
-  }
-  .handoff-app-icon { font-size: 48px; margin-bottom: 12px; }
-  .handoff-title {
-    font-family: 'Bebas Neue', sans-serif;
-    font-size: 26px; letter-spacing: 1px; margin-bottom: 8px;
-  }
-  .handoff-sub {
-    font-size: 14px; color: var(--muted); line-height: 1.7; margin-bottom: 24px;
-  }
-  .handoff-remote {
-    display: grid;
-    grid-template-areas: ". up ." "left ok right" ". down ." "back home .";
-    gap: 8px; justify-content: center; margin-bottom: 24px;
-  }
-  .hr-up { grid-area: up; } .hr-down { grid-area: down; }
-  .hr-left { grid-area: left; } .hr-right { grid-area: right; }
-  .hr-ok { grid-area: ok; } .hr-back { grid-area: back; } .hr-home { grid-area: home; }
-  .handoff-remote .remote-btn { width: 48px; height: 48px; font-size: 18px; }
-  .handoff-ready {
-    width: 100%; padding: 14px;
-    background: #1db954; border: none; border-radius: 6px;
-    color: #fff; font-family: 'Bebas Neue', sans-serif;
-    font-size: 20px; letter-spacing: 1px;
-    cursor: pointer; transition: all 0.15s; margin-bottom: 10px;
-  }
-  .handoff-ready:hover { background: #1ed760; }
-  .handoff-ready:disabled { opacity: 0.6; cursor: not-allowed; }
-  .handoff-cancel { background: none; border: none; color: var(--muted); font-size: 13px; cursor: pointer; }
-  .handoff-cancel:hover { color: var(--text); }
-  .handoff-pulse {
-    display: inline-block; width: 8px; height: 8px; border-radius: 50%;
-    background: var(--accent); margin-right: 6px;
-    animation: pulse 1.5s infinite;
-  }
-  @keyframes pulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.4; transform:scale(0.7); } }
-
-  /* ── PROFILE OVERLAY ── */
-  .prof-overlay {
-    position: fixed; inset: 0; z-index: 400;
-    background: rgba(0,0,0,0.9);
-    display: flex; align-items: center; justify-content: center;
-    animation: fadeIn 0.2s;
-  }
-  @keyframes fadeIn { from { opacity: 0; } }
-  .prof-box {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 32px 40px;
-    text-align: center;
-    max-width: 420px; width: 90%;
-  }
-  .prof-title {
-    font-family: 'Bebas Neue', sans-serif;
-    font-size: 28px; letter-spacing: 1px; margin-bottom: 4px;
-  }
-  .prof-app { font-size: 13px; color: var(--muted); margin-bottom: 24px; }
-  .prof-grid {
-    display: flex; flex-wrap: wrap; gap: 14px;
-    justify-content: center; margin-bottom: 20px;
-  }
-  .prof-btn {
-    width: 88px; height: 88px;
-    border-radius: 6px; border: 2px solid var(--border);
-    background: var(--surface2);
-    color: var(--text); cursor: pointer;
-    font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500;
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 6px; transition: all 0.15s;
-  }
-  .prof-btn:hover { border-color: var(--accent); background: rgba(229,9,20,0.1); }
-  .prof-avatar { font-size: 30px; }
-  .prof-cancel { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 13px; }
-  .prof-cancel:hover { color: var(--text); }
-
-  /* ── EMPTY STATE ── */
-  .empty-state {
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    min-height: 60vh; gap: 16px; color: var(--muted); text-align: center; padding: 40px;
-  }
-  .empty-icon { font-size: 64px; opacity: 0.3; }
-  .empty-title { font-family: 'Bebas Neue', sans-serif; font-size: 28px; letter-spacing: 1px; color: var(--text); }
-  .empty-sub { font-size: 14px; max-width: 300px; line-height: 1.6; }
-
-  /* ── LOADING ── */
-  .loading-row {
-    display: flex; gap: 12px; overflow: hidden; padding-bottom: 8px;
-  }
-  .skeleton-card {
-    flex-shrink: 0; width: var(--card-w); height: var(--card-h);
-    border-radius: var(--radius);
-    background: linear-gradient(90deg, var(--surface2) 25%, var(--surface) 50%, var(--surface2) 75%);
-    background-size: 200% 100%;
-    animation: shimmer 1.4s infinite;
-  }
-  @keyframes shimmer { to { background-position: -200% 0; } }
-
-  /* ── REMOTE BAR ── */
-  /* ── Responsive ── */
-  * { box-sizing: border-box; }
-  :root {
-    --card-w: clamp(130px, 15vw, 180px);
-    --card-h: clamp(195px, 22.5vw, 270px);
-  }
-  @media (max-width: 600px) {
-    nav { padding: 0 12px; }
-    main { padding: 0 12px 140px; }
-    #hero { height: 300px; }
-    #hero-content { padding: 60px 20px 20px; }
-    #hero-title { font-size: 32px; }
-    .modal { margin: 0; border-radius: 0; min-height: 100vh; }
-    .modal-hero { height: 200px; }
-    .modal-body { padding: 16px; }
-    .modal-title { font-size: 24px; }
-  }
-  @media (min-width: 601px) and (max-width: 1024px) {
-    main { padding: 0 20px 130px; }
-    #hero-content { padding: 80px 28px 28px; }
-  }
-
-  /* ── Remote bar ── */
-  .remote-bar {
-    position: fixed; bottom: 0; left: 0; right: 0; z-index: 150;
-    background: rgba(13,13,20,0.97); backdrop-filter: blur(10px);
-    border-top: 1px solid var(--border);
-    padding: 8px 16px 10px;
-    display: flex; flex-direction: column; gap: 6px;
-  }
-  .remote-row {
-    display: flex; align-items: center; justify-content: center; gap: 6px;
-    flex-wrap: wrap;
-  }
-  .remote-btn {
-    width: 48px; height: 48px; border-radius: 50%;
-    border: 1px solid var(--border);
-    background: var(--surface2); color: var(--text);
-    font-size: 18px; cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
-    transition: all 0.15s; flex-shrink: 0;
-  }
-  .remote-btn:hover { background: rgba(255,255,255,0.14); border-color: rgba(255,255,255,0.25); }
-  .remote-btn:active { transform: scale(0.92); }
-  .remote-btn.ok-btn {
-    width: 54px; height: 54px; font-size: 12px; font-weight: 700;
-    background: var(--surface); border-color: rgba(255,255,255,0.25);
-  }
-  .remote-btn.active-btn { background: var(--accent2); border-color: var(--accent2); color: #111; }
-  .remote-sep { width: 1px; height: 28px; background: var(--border); margin: 0 2px; }
-  .remote-label {
-    font-size: 9px; font-weight: 600; letter-spacing: 0.8px;
-    text-transform: uppercase; color: var(--muted);
-    text-align: center; width: 100%;
-  }
-  .sonos-vol {
-    display: flex; align-items: center; gap: 6px;
-  }
-  .vol-bar-wrap {
-    flex: 1; max-width: 120px;
-    height: 4px; background: var(--surface2); border-radius: 2px; overflow: hidden;
-  }
-  .vol-bar { height: 100%; background: var(--text); border-radius: 2px; transition: width 0.2s; }
 </style>
 </head>
 <body>
-
 <nav>
-  <div class="nav-logo">TV Guide</div>
-  <div class="nav-actions">
-    <button class="btn btn-ghost" id="btn-scan-all" onclick="scanAll()">🔍 Scan All</button>
-    <button class="btn btn-ghost btn-icon" id="btn-refresh" onclick="loadShows()" title="Refresh">↻</button>
+  <div class="brand"><span class="b-dot"></span>TV Guide</div>
+  <div class="seg">
+    <button class="on">Home</button><button onclick="document.querySelector('#cw-sec')?.scrollIntoView({behavior:'smooth'})">Continue</button>
+    <button onclick="document.querySelector('#lib-sec')?.scrollIntoView({behavior:'smooth'})">Library</button>
   </div>
+  <div class="spacer"></div>
+  <button class="ico" id="btn-scan-all" title="Scan services" onclick="scanAll()">⌕</button>
+  <button class="ico" id="btn-refresh" title="Refresh" onclick="loadShows()">↻</button>
 </nav>
 
-<div id="hero">
-  <div id="hero-bg"></div>
-  <div id="hero-content">
-    <div id="hero-badge">Now Tracking</div>
-    <div id="hero-title">Loading…</div>
-    <div id="hero-meta"></div>
-    <div id="hero-overview"></div>
-    <div id="hero-actions"></div>
-  </div>
-</div>
+<div class="filters" id="filter-row"></div>
 
 <main id="main-content">
-  <div class="loading-row" id="skeleton-row">
-    <div class="skeleton-card"></div><div class="skeleton-card"></div>
-    <div class="skeleton-card"></div><div class="skeleton-card"></div>
-    <div class="skeleton-card"></div><div class="skeleton-card"></div>
-    <div class="skeleton-card"></div><div class="skeleton-card"></div>
+  <div class="sh"><h2>Loading…</h2></div>
+  <div class="skрow">
+    <div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div>
+    <div class="skel"></div><div class="skel"></div>
   </div>
 </main>
 
-<!-- Remote bar -->
-<div class="remote-bar">
-  <!-- Row 1: Fire TV controls -->
-  <div class="remote-row">
-    <span class="remote-label" style="width:auto;margin-right:4px;">🔥 Fire TV</span>
-    <div class="remote-sep"></div>
-    <button class="remote-btn" onclick="remote('KEYCODE_DPAD_UP')" title="Up">▲</button>
-    <button class="remote-btn" onclick="remote('KEYCODE_DPAD_DOWN')" title="Down">▼</button>
-    <button class="remote-btn" onclick="remote('KEYCODE_DPAD_LEFT')" title="Left">◀</button>
-    <button class="remote-btn" onclick="remote('KEYCODE_DPAD_RIGHT')" title="Right">▶</button>
-    <button class="remote-btn ok-btn" onclick="remote('KEYCODE_DPAD_CENTER')" title="OK">OK</button>
-    <div class="remote-sep"></div>
-    <button class="remote-btn" onclick="remote('KEYCODE_BACK')" title="Back">↩</button>
-    <button class="remote-btn" onclick="remote('KEYCODE_HOME')" title="Home">⌂</button>
-    <div class="remote-sep"></div>
-    <button class="remote-btn" onclick="remote('KEYCODE_MEDIA_PLAY_PAUSE')" title="Play/Pause">⏯</button>
-    <button class="remote-btn" onclick="remote('KEYCODE_MEDIA_REWIND')" title="Rewind">⏪</button>
-    <button class="remote-btn" onclick="remote('KEYCODE_MEDIA_FAST_FORWARD')" title="FF">⏩</button>
-  </div>
-  <!-- Row 2: Sonos controls -->
-  <div class="remote-row">
-    <span class="remote-label" style="width:auto;margin-right:4px;">🔊 Sonos</span>
-    <div class="remote-sep"></div>
-    <button class="remote-btn" onclick="sonosCmd('volume_down')" title="Vol-">🔉</button>
-    <div class="sonos-vol">
-      <div class="vol-bar-wrap"><div class="vol-bar" id="vol-bar" style="width:36%"></div></div>
-      <span id="vol-pct" style="font-size:12px;font-weight:600;color:var(--text);min-width:32px;text-align:left;">36%</span>
+<div class="dock">
+  <div class="dgrp">
+    <span class="dlbl">FIRE&nbsp;TV</span>
+    <div class="pad">
+      <span></span><button class="pk" onclick="remote('KEYCODE_DPAD_UP')">▲</button><span></span>
+      <button class="pk" onclick="remote('KEYCODE_DPAD_LEFT')">◀</button><button class="pk c" onclick="remote('KEYCODE_DPAD_CENTER')">OK</button><button class="pk" onclick="remote('KEYCODE_DPAD_RIGHT')">▶</button>
+      <span></span><button class="pk" onclick="remote('KEYCODE_DPAD_DOWN')">▼</button><span></span>
     </div>
-    <button class="remote-btn" onclick="sonosCmd('volume_up')" title="Vol+">🔊</button>
-    <button class="remote-btn" id="btn-mute" onclick="sonosCmd('mute')" title="Mute">🔇</button>
-    <div class="remote-sep"></div>
-    <button class="remote-btn" id="btn-speech" onclick="sonosCmd('speech_enhancement')" title="Speech Enhancement" style="font-size:13px;font-weight:600;">SE</button>
-    <button class="remote-btn" id="btn-night" onclick="sonosCmd('night_mode')" title="Night Sound" style="font-size:16px;">🌙</button>
+    <button class="db" onclick="remote('KEYCODE_BACK')" title="Back">↩</button>
+    <button class="db" onclick="remote('KEYCODE_HOME')" title="Home">⌂</button>
+    <button class="db" onclick="remote('KEYCODE_MEDIA_PLAY_PAUSE')" title="Play/Pause">⏯</button>
+  </div>
+  <span class="sep"></span>
+  <div class="dgrp">
+    <span class="dlbl">SONOS</span>
+    <button class="db" onclick="sonosCmd('volume_down')" title="Vol-">🔉</button>
+    <div class="vbar"><i id="vol-bar"></i></div>
+    <span id="vol-pct" style="font-size:12px;font-weight:600;min-width:34px">42%</span>
+    <button class="db" onclick="sonosCmd('volume_up')" title="Vol+">🔊</button>
+    <button class="db" id="btn-mute" onclick="sonosCmd('mute')" title="Mute">🔇</button>
+    <button class="db" id="btn-speech" onclick="sonosCmd('speech_enhancement')" title="Speech enhancement" style="font-size:12px;font-weight:700">SE</button>
+    <button class="db" id="btn-night" onclick="sonosCmd('night_mode')" title="Night sound">🌙</button>
   </div>
 </div>
 
-<!-- Show modal -->
 <div class="modal-backdrop" id="show-modal" onclick="maybeCloseModal(event)">
   <div class="modal" id="modal-inner">
     <div class="modal-hero">
@@ -730,7 +211,7 @@
       <button class="modal-close" onclick="closeModal()">✕</button>
       <div class="modal-hero-info">
         <img id="modal-poster" class="modal-poster" src="" alt="">
-        <div class="modal-hero-text">
+        <div style="flex:1">
           <div class="modal-title" id="modal-title"></div>
           <div class="modal-meta" id="modal-meta"></div>
           <div class="modal-actions" id="modal-actions"></div>
@@ -746,732 +227,277 @@
   </div>
 </div>
 
-<!-- Scan toast -->
-<div class="scan-modal" id="scan-toast">
-  <span class="spin">⟳</span>
-  <span id="scan-msg">Scanning…</span>
-</div>
-
+<div class="scan-modal" id="scan-toast"><span class="spin">⟳</span><span id="scan-msg">Scanning…</span></div>
 <div id="toast-container"></div>
 
 <script>
-// ── Constants ──────────────────────────────────────────────────────────────
-var SVCS = {
-  netflix:'Netflix', hulu:'Hulu', disney:'Disney+', max:'Max',
-  peacock:'Peacock', discovery:'Discovery+', prime:'Prime Video',
-  apple:'Apple TV+', paramount:'Paramount+', plex:'Plex', tubi:'Tubi',
-  pluto:'Pluto TV', youtube:'YouTube'
-};
-var SVC_COLORS = {
-  netflix:'#e50914', hulu:'#1ce783', disney:'#113ccf', max:'#002be7',
-  peacock:'#ffd60a', discovery:'#0459ff', prime:'#00a8e1',
-  apple:'#a2aaad', paramount:'#0064ff', plex:'#e5a00d',
-  tubi:'#fa4500', pluto:'#fff', youtube:'#ff0000'
-};
+var COL={netflix:'#e50914',hulu:'#1ce783',disney:'#4a7bff',max:'#4d7cff',peacock:'#f7b500',discovery:'#3b9bff',prime:'#19b3e6',paramount:'#1f6bff',apple:'#d8d8d8',plex:'#e5a00d',tubi:'#fa3c00',pluto:'#ffd400',youtube:'#ff3a30'};
+var SVCS={netflix:'Netflix',hulu:'Hulu',disney:'Disney+',max:'Max',peacock:'Peacock',discovery:'Discovery+',prime:'Prime Video',apple:'Apple TV+',paramount:'Paramount+',plex:'Plex',tubi:'Tubi',pluto:'Pluto TV',youtube:'YouTube'};
 
-// ── State ──────────────────────────────────────────────────────────────────
-var appData = { shows:[], watched:{}, services:{}, deep_links:{}, profiles:{}, nextup:{} };
-var allShows = [];
-var currentShowId = null;
-var currentSeason = null;
-var _profCb = null;
-var _progressDirty = false;
+var appData={shows:[],watched:{},services:{},deep_links:{},profiles:{},nextup:{}};
+var allShows=[];
+var currentShowId=null,currentSeason=null,_profCb=null,_progressDirty=false,currentFilter='all';
 
-// ── API helpers ────────────────────────────────────────────────────────────
-async function api(method, path, body) {
-  const r = await fetch(path, {
-    method, headers:{'Content-Type':'application/json'},
-    body: body ? JSON.stringify(body) : undefined
-  });
-  if (!r.ok) throw new Error(`${r.status}`);
+async function api(method,path,body){
+  const r=await fetch(path,{method,headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});
+  if(!r.ok) throw new Error(`${r.status}`);
   return r.json().catch(()=>({}));
 }
-const get = p => api('GET',p);
-const post = (p,b) => api('POST',p,b);
-const del = p => api('DELETE',p);
+const get=p=>api('GET',p), post=(p,b)=>api('POST',p,b), del=p=>api('DELETE',p);
 
-// ── Toast ──────────────────────────────────────────────────────────────────
-function toast(msg, type='') {
-  const el = document.createElement('div');
-  el.className = 'toast' + (type ? ' '+type : '');
-  el.textContent = msg;
-  document.getElementById('toast-container').appendChild(el);
-  setTimeout(() => el.remove(), 3000);
+function toast(msg,type=''){
+  const el=document.createElement('div'); el.className='toast'+(type?' '+type:''); el.textContent=msg;
+  document.getElementById('toast-container').appendChild(el); setTimeout(()=>el.remove(),3000);
 }
 
-// ── Load ───────────────────────────────────────────────────────────────────
-async function loadShows() {
-  var refreshBtn2 = document.getElementById('btn-refresh');
-  if (refreshBtn2) refreshBtn2.textContent = '⟳';
-  try {
-    const [status, shows, data, nextup] = await Promise.all([
-      get('api/status'),
-      get('api/shows'),
-      get('api/data').catch(()=>({watched:{}})),
-      get('api/nextup').catch(()=>({}))
+async function loadShows(){
+  const rb=document.getElementById('btn-refresh'); if(rb) rb.textContent='⟳';
+  try{
+    const [status,shows,data,nextup]=await Promise.all([
+      get('api/status'), get('api/shows'),
+      get('api/data').catch(()=>({watched:{}})), get('api/nextup').catch(()=>({}))
     ]);
-    // status.services is the SVCS labels dict - store separately
-    var SVCS_LABELS = status.services || {};
-    // Build per-show service map from shows array
-    var showServices = {};
-    var showDeepLinks = {};
-    shows.forEach(s => {
-      if (s.service) showServices[String(s.id)] = s.service;
-      if (s.deep_link) showDeepLinks[String(s.id)] = s.deep_link;
-    });
-    // profiles come from status.profiles
-    appData = { watched:{}, services: showServices, deep_links: showDeepLinks, profiles:{}, ...status, shows };
-    // Restore per-show data (status.services overwrites with labels dict)
-    appData.services = showServices;
-    appData.deep_links = showDeepLinks;
-    appData.watched = (data && data.watched) ? data.watched : {};
-    appData.nextup = nextup || {};
-    allShows = shows;
-    render();
-  initDragScroll();
-  } catch(e) {
-    toast('Failed to load shows: ' + e.message, 'error');
-    console.error('loadShows error:', e);
-  }
-  const refreshBtn = document.getElementById('btn-refresh');
-  if (refreshBtn) refreshBtn.textContent = '↻';
+    var showServices={},showDeepLinks={};
+    shows.forEach(s=>{ if(s.service) showServices[String(s.id)]=s.service; if(s.deep_link) showDeepLinks[String(s.id)]=s.deep_link; });
+    appData={watched:{},services:showServices,deep_links:showDeepLinks,profiles:{},...status,shows};
+    appData.services=showServices; appData.deep_links=showDeepLinks;
+    appData.watched=(data&&data.watched)?data.watched:{};
+    appData.nextup=nextup||{};
+    allShows=shows;
+    render(); initDragScroll();
+  }catch(e){ toast('Failed to load shows: '+e.message,'error'); console.error(e); }
+  if(rb) rb.textContent='↻';
 }
 
-// ── Render ─────────────────────────────────────────────────────────────────
-function getPoster(show) {
-  const images = show.images || [];
-  const poster = images.find(i=>i.coverType==='poster');
-  return poster?.remoteUrl || poster?.url || null;
+function getPoster(s){const i=(s.images||[]).find(x=>x.coverType==='poster');return i?.remoteUrl||i?.url||s.poster||null;}
+function getFanart(s){const i=(s.images||[]).find(x=>x.coverType==='fanart')||(s.images||[]).find(x=>x.coverType==='banner');return i?.remoteUrl||i?.url||s.fanart||null;}
+function getSvc(id){return appData.services?.[String(id)]||null;}
+function nu(s){return appData.nextup?.[String(s.id)]||null;}
+function getNextUp(s){return nu(s)?.next||null;}
+function unwatchedCount(s){return nu(s)?.unwatched||0;}
+function isStarted(s){return !!nu(s)?.started;}
+function epLabel(e){return e?`S${e.season}·E${e.episode}`:'';}
+function pct(s){const n=nu(s);return (n&&n.aired)?Math.round(n.watched/n.aired*100):0;}
+function recomputeNextUp(show){
+  const now=new Date();
+  const eps=(show.episodes||[]).filter(e=>e.seasonNumber>0&&e.airDateUtc&&new Date(e.airDateUtc)<=now).sort((a,b)=>a.seasonNumber-b.seasonNumber||a.episodeNumber-b.episodeNumber);
+  const w=new Set(appData.watched?.[show.id]||[]); let next=null,wc=0;
+  for(const e of eps){ if(w.has(e.id)) wc++; else if(!next) next={id:e.id,season:e.seasonNumber,episode:e.episodeNumber,title:e.title,airDateUtc:e.airDateUtc,hasFile:e.hasFile}; }
+  appData.nextup[String(show.id)]={next,aired:eps.length,watched:wc,unwatched:eps.length-wc,started:wc>0};
 }
-function getFanart(show) {
-  const images = show.images || [];
-  const fanart = images.find(i=>i.coverType==='fanart') || images.find(i=>i.coverType==='banner');
-  return fanart?.remoteUrl || fanart?.url || null;
-}
-function getSvc(sid) {
-  return appData.services?.[String(sid)] || null;
-}
-function nu(show)        { return appData.nextup?.[String(show.id)] || null; }
-function getNextUp(show) { return nu(show)?.next || null; }
-function unwatchedCount(show) { return nu(show)?.unwatched || 0; }
-function isStarted(show) { return !!nu(show)?.started; }
-function epLabel(ep)     { return ep ? `S${ep.season}·E${ep.episode}` : ''; }
+function filterShow(s){return currentFilter==='all'||getSvc(s.id)===currentFilter;}
 
-// Recompute next-up locally from already-loaded episodes (avoids a server round-trip on each tick).
-function recomputeNextUp(show) {
-  const now = new Date();
-  const eps = (show.episodes || [])
-    .filter(e => e.seasonNumber > 0 && e.airDateUtc && new Date(e.airDateUtc) <= now)
-    .sort((a,b) => a.seasonNumber - b.seasonNumber || a.episodeNumber - b.episodeNumber);
-  const watched = new Set(appData.watched?.[show.id] || []);
-  let next = null, wc = 0;
-  for (const e of eps) {
-    if (watched.has(e.id)) { wc++; }
-    else if (!next) { next = { id:e.id, season:e.seasonNumber, episode:e.episodeNumber, title:e.title, airDateUtc:e.airDateUtc, hasFile:e.hasFile }; }
-  }
-  appData.nextup[String(show.id)] = { next, aired: eps.length, watched: wc, unwatched: eps.length - wc, started: wc > 0 };
-}
+function ringSvg(p){const r=15,c=2*Math.PI*r,off=c*(1-p/100);
+  return `<svg class="ring" width="34" height="34" viewBox="0 0 34 34"><circle cx="17" cy="17" r="${r}" fill="none" stroke="rgba(255,255,255,.2)" stroke-width="3"/><circle cx="17" cy="17" r="${r}" fill="none" stroke="#2dd4bf" stroke-width="3" stroke-linecap="round" stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}" transform="rotate(-90 17 17)"/></svg>`;}
 
-function render() {
-  const skeletonRow = document.getElementById('skeleton-row');
-  if (skeletonRow) skeletonRow.style.display = 'none';
-  const main = document.getElementById('main-content');
-
-  if (!allShows.length) {
-    main.innerHTML = `<div class="empty-state">
-      <div class="empty-icon">📺</div>
-      <div class="empty-title">No Shows Yet</div>
-      <div class="empty-sub">Connect Sonarr to start tracking your shows.</div>
-    </div>`;
-    return;
-  }
-
-  // Real Continue Watching = you've started it AND a next aired episode is waiting.
-  const cont = allShows
-    .filter(s => { const n = nu(s); return n && n.next && n.started; })
-    .sort((a,b) => new Date(getNextUp(b)?.airDateUtc||0) - new Date(getNextUp(a)?.airDateUtc||0));
-  // Ready to Start = aired episodes waiting, but you haven't begun.
-  const fresh = allShows.filter(s => { const n = nu(s); return n && n.next && !n.started; });
-
-  // Hero: first continue-watching show with fanart, else anything with art.
-  const heroShow = cont.find(s=>getFanart(s)) || allShows.find(s=>getFanart(s)) || allShows[0];
-  if (heroShow) renderHero(heroShow);
-
-  main.innerHTML = '';
-
-  const sections = [
-    { title: 'Continue Watching', shows: cont },
-    { title: 'Ready to Start', shows: fresh },
-    { title: 'All Shows', shows: allShows },
-  ].filter(s => s.shows.length > 0);
-
-  // Dedupe: only show each show in first matching section
-  const seen = new Set();
-  for (const sec of sections) {
-    const unique = sec.shows.filter(s => !seen.has(s.id));
-    unique.forEach(s => seen.add(s.id));
-    if (!unique.length) continue;
-    main.appendChild(buildSection(sec.title, unique));
-  }
-}
-
-function renderHero(show) {
-  const fanart = getFanart(show) || getPoster(show);
-  const svc = getSvc(show.id);
-  document.getElementById('hero-bg').style.backgroundImage = fanart ? `url(${fanart})` : 'none';
-  document.getElementById('hero-title').textContent = show.title;
-  document.getElementById('hero-overview').textContent = show.overview || '';
-  
-  const count = unwatchedCount(show);
-  const next = getNextUp(show);
-  const meta = document.getElementById('hero-meta');
-  meta.innerHTML = `
-    <span>${show.network || ''}</span>
-    ${show.year ? `<span>· ${show.year}</span>` : ''}
-    ${show.status ? `<span>· ${show.status}</span>` : ''}
-    ${count ? `<span style="color:var(--accent2)">· ${count} to watch</span>` : ''}
-    ${next ? `<span style="color:var(--accent2)">· Next ${epLabel(next)}</span>` : ''}
-  `;
-
-  const actions = document.getElementById('hero-actions');
-  actions.innerHTML = `
-    ${(svc && next)
-      ? `<button class="btn btn-primary" onclick="resumeShow(${show.id})">▶ Resume ${epLabel(next)}</button>`
-      : `<button class="btn btn-primary" onclick="openModal(${show.id})">▶ View Episodes</button>`}
-    ${svc ? `<button class="btn btn-ghost" onclick="launchShow(${show.id},'${svc}')">📺 ${SVCS[svc]||svc}</button>` : ''}
-    <button class="btn btn-ghost" onclick="openModal(${show.id})">Episodes</button>
-  `;
-}
-
-function buildSection(title, shows) {
-  const sec = document.createElement('div');
-  sec.className = 'section';
-  sec.innerHTML = `
-    <div class="section-header">
-      <div class="section-title">${title}</div>
-      <div class="section-count">${shows.length}</div>
+function bigCard(s){
+  const next=getNextUp(s), fan=getFanart(s)||getPoster(s), svc=getSvc(s.id);
+  const bg=fan?`background-image:url('${fan}')`:`background:linear-gradient(120deg,#1d2130,#0b0c11)`;
+  return `<div class="bcard" style="${bg}" onclick="openModal(${s.id})">
+    <span class="bc-svc">${svc?`<span class="fdot" style="background:${COL[svc]||'#888'}"></span>${SVCS[svc]||svc}`:''}</span>
+    <div class="bc-title">${s.title}</div>
+    <div class="bc-next">▶ Resume ${epLabel(next)} · ${unwatchedCount(s)} to watch</div>
+    <div class="bc-prog"><i style="width:${pct(s)}%"></i></div>
+    <div class="bc-actions" onclick="event.stopPropagation()">
+      ${svc?`<button class="mini mini-p" onclick="resumeShow(${s.id})">Resume</button>`:''}
+      <button class="mini mini-g" onclick="openModal(${s.id})">Episodes</button>
+      ${svc?`<button class="mini mini-g" onclick="launchShow(${s.id},'${svc}')">Open app</button>`:''}
     </div>
-    <div class="row-scroll" id="row-${title.replace(/\s+/g,'-')}"></div>
-  `;
-  const row = sec.querySelector('.row-scroll');
-  shows.forEach(show => row.appendChild(buildCard(show)));
-  return sec;
-}
-
-function buildCard(show) {
-  const card = document.createElement('div');
-  card.className = 'show-card';
-  card.onclick = () => openModal(show.id);
-
-  const poster = getPoster(show);
-  const svc = getSvc(show.id);
-  const count = unwatchedCount(show);
-  const next = getNextUp(show);
-  const svcColor = svc ? (SVC_COLORS[svc] || '#fff') : null;
-
-  if (poster) {
-    card.innerHTML = `<img src="${poster}" alt="${show.title}" loading="lazy">`;
-  } else {
-    card.innerHTML = `<div class="card-no-img">
-      <div class="card-no-img-icon">📺</div>
-      <div class="card-no-img-title">${show.title}</div>
-    </div>`;
-  }
-
-  if (count > 0) {
-    card.innerHTML += `<div class="card-unwatched-badge">${count > 9 ? '9+' : count}</div>`;
-  }
-
-  card.innerHTML += `<div class="show-card-overlay">
-    <div class="card-title">${show.title}</div>
-    <div class="card-meta">
-      ${show.network ? `<span>${show.network}</span>` : ''}
-      ${svc ? `<span class="card-svc" style="color:${svcColor}">${SVCS[svc]||svc}</span>` : ''}
-    </div>
-    ${next ? `<div class="card-next-ep">▶ Next: ${epLabel(next)}${next.title ? ' · ' + next.title : ''}</div>`
-           : (show.nextAiring ? `<div class="card-next-ep">Airs ${new Date(show.nextAiring).toLocaleDateString()}</div>` : '')}
   </div>`;
-
-  return card;
+}
+function posterCard(s){
+  const poster=getPoster(s), svc=getSvc(s.id), next=getNextUp(s), started=isStarted(s);
+  return `<div class="pcard" onclick="openModal(${s.id})">
+    <div class="pwrap">
+      ${poster?`<img src="${poster}" loading="lazy" alt="">`:''}
+      ${svc?`<span class="ptag"><span class="fdot" style="background:${COL[svc]||'#888'}"></span>${SVCS[svc]||svc}</span>`:''}
+      ${started?ringSvg(pct(s)):''}
+      <b>${s.title}</b>
+    </div>
+    ${next?`<div class="pnext">▶ Next ${epLabel(next)}</div>`:`<div class="pmeta"><span>${svc?SVCS[svc]:(s.network||'')}</span><span>${s.year||''}</span></div>`}
+  </div>`;
 }
 
-// ── Modal ──────────────────────────────────────────────────────────────────
-async function openModal(showId) {
-  currentShowId = showId;
-  const show = allShows.find(s=>s.id===showId);
-  if (!show) return;
+function renderFilters(){
+  const present=[...new Set(allShows.map(s=>getSvc(s.id)).filter(Boolean))];
+  const row=document.getElementById('filter-row');
+  row.innerHTML=`<div class="fchip${currentFilter==='all'?' on':''}" onclick="setFilter('all')">All</div>`+
+    present.map(svc=>`<div class="fchip${currentFilter===svc?' on':''}" onclick="setFilter('${svc}')"><span class="fdot" style="background:${COL[svc]||'#888'}"></span>${SVCS[svc]||svc}</div>`).join('');
+}
+function setFilter(f){currentFilter=f; renderFilters(); render(); initDragScroll();}
 
-  document.getElementById('show-modal').classList.add('open');
-  document.body.style.overflow = 'hidden';
+function render(){
+  const main=document.getElementById('main-content');
+  if(!allShows.length){ main.innerHTML=`<div class="empty"><div class="ei">📺</div><h2>No shows yet</h2><div>Connect Sonarr to start tracking your shows.</div></div>`; return; }
+  renderFilters();
+  const cont=allShows.filter(s=>{const n=nu(s);return n&&n.next&&n.started&&filterShow(s);}).sort((a,b)=>new Date(getNextUp(b)?.airDateUtc||0)-new Date(getNextUp(a)?.airDateUtc||0));
+  const fresh=allShows.filter(s=>{const n=nu(s);return n&&n.next&&!n.started&&filterShow(s);});
+  const lib=allShows.filter(filterShow);
+  let html='';
+  if(cont.length) html+=`<div id="cw-sec"><div class="sh"><h2>Continue watching</h2><span class="ct">where you left off</span></div><div class="cw" id="cw">${cont.map(bigCard).join('')}</div></div>`;
+  if(fresh.length) html+=`<div class="sh"><h2>Ready to start</h2><span class="ct">${fresh.length} ${fresh.length===1?'show':'shows'}</span></div><div class="grid">${fresh.map(posterCard).join('')}</div>`;
+  html+=`<div id="lib-sec"><div class="sh"><h2>Your library</h2><span class="ct">${lib.length} ${lib.length===1?'show':'shows'}</span></div><div class="grid">${lib.map(posterCard).join('')}</div></div>`;
+  main.innerHTML=html;
+}
 
-  const fanart = getFanart(show);
-  const poster = getPoster(show);
-  const svc = getSvc(showId);
-
-  document.getElementById('modal-fanart').src = fanart || poster || '';
-  document.getElementById('modal-poster').src = poster || '';
-  document.getElementById('modal-poster').style.display = poster ? 'block' : 'none';
-  document.getElementById('modal-title').textContent = show.title;
-  document.getElementById('modal-overview').textContent = show.overview || '';
-
-  // Meta
-  const meta = document.getElementById('modal-meta');
-  meta.innerHTML = [
-    show.network, show.year, show.status,
-    show.genres?.join(', ')
-  ].filter(Boolean).map(m=>`<span>${m}</span>`).join('');
-
-  // Actions
-  const next = getNextUp(show);
-  const actions = document.getElementById('modal-actions');
-  if (svc) {
-    actions.innerHTML =
-      (next ? `<button class="btn btn-primary" onclick="resumeShow(${showId})">▶ Resume ${epLabel(next)}</button>` : '')
-      + `<button class="btn btn-ghost" onclick="launchShow(${showId},'${svc}')">📺 Open ${SVCS[svc]||svc}</button>`
-      + `<button class="btn btn-ghost" onclick="scanShow(${showId})">🔍 Scan</button>`;
-  } else {
-    actions.innerHTML = `<button class="btn btn-ghost" onclick="scanShow(${showId})">🔍 Find Streaming Service</button>`;
-  }
-
-  // Service override
+async function openModal(showId){
+  currentShowId=showId; const show=allShows.find(s=>s.id===showId); if(!show) return;
+  document.getElementById('show-modal').classList.add('open'); document.body.style.overflow='hidden';
+  const fan=getFanart(show),poster=getPoster(show),svc=getSvc(showId);
+  document.getElementById('modal-fanart').src=fan||poster||'';
+  const mp=document.getElementById('modal-poster'); mp.src=poster||''; mp.style.display=poster?'block':'none';
+  document.getElementById('modal-title').textContent=show.title;
+  document.getElementById('modal-overview').textContent=show.overview||'';
+  const seasons=show.seasonCount?`${show.seasonCount} season${show.seasonCount>1?'s':''}`:'';
+  const epc=show.episodeCount?`${show.episodeCount} episodes`:'';
+  document.getElementById('modal-meta').innerHTML=[show.network,show.year,show.status,seasons,epc,(show.genres||[]).slice(0,3).join(', ')].filter(Boolean).map(m=>`<span>${m}</span>`).join('');
+  const next=getNextUp(show); const actions=document.getElementById('modal-actions');
+  if(svc){ actions.innerHTML=(next?`<button class="btn btn-primary" onclick="resumeShow(${showId})">▶ Resume ${epLabel(next)}</button>`:'')+`<button class="btn btn-ghost" onclick="launchShow(${showId},'${svc}')">📺 Open ${SVCS[svc]||svc}</button><button class="btn btn-ghost" onclick="scanShow(${showId})">🔍 Scan</button>`; }
+  else { actions.innerHTML=`<button class="btn btn-ghost" onclick="scanShow(${showId})">🔍 Find streaming service</button>`; }
   renderServiceButtons(showId);
-
-  // Load episodes
-  try {
-    const eps = await get(`api/shows/${showId}/episodes`);
-    show.episodes = eps;
-    renderSeasons(show);
-  } catch {
-    document.getElementById('ep-list').innerHTML = '<div style="color:var(--muted);font-size:13px;padding:10px 0">No episode data available</div>';
-  }
+  try{ const eps=await get(`api/shows/${showId}/episodes`); show.episodes=eps; renderSeasons(show); }
+  catch{ document.getElementById('ep-list').innerHTML='<div style="color:var(--muted);font-size:13px;padding:10px 0">No episode data available</div>'; }
 }
-
-function renderServiceButtons(showId) {
-  const svc = getSvc(showId);
-  const override = document.getElementById('service-override');
-  override.innerHTML = `<span class="service-override-label">Service:</span>` +
-    Object.entries(SVCS).map(([k,v]) =>
-      `<button class="svc-btn${svc===k?' active':''}" onclick="setService(${showId},'${k}',this)">${v}</button>`
-    ).join('') +
-    (svc ? `<button class="svc-btn" onclick="setService(${showId},'',this)">✕ Clear</button>` : '');
+function renderServiceButtons(showId){
+  const svc=getSvc(showId); const o=document.getElementById('service-override');
+  o.innerHTML=`<span class="service-override-label">Service:</span>`+Object.entries(SVCS).map(([k,v])=>`<button class="svc-btn${svc===k?' active':''}" onclick="setService(${showId},'${k}',this)">${v}</button>`).join('')+(svc?`<button class="svc-btn" onclick="setService(${showId},'',this)">✕ Clear</button>`:'');
 }
-
-function renderSeasons(show) {
-  const eps = show.episodes || [];
-  const seasons = [...new Set(eps.map(e=>e.seasonNumber))].filter(s=>s>0).sort((a,b)=>a-b);
-  if (!seasons.length) {
-    document.getElementById('season-tabs').innerHTML = '';
-    document.getElementById('ep-list').innerHTML = '<div style="color:var(--muted);font-size:13px;padding:10px 0">No episodes found</div>';
-    return;
-  }
-
-  // Default to latest season
-  if (!currentSeason || !seasons.includes(currentSeason)) {
-    currentSeason = seasons[seasons.length-1];
-  }
-
-  const tabs = document.getElementById('season-tabs');
-  tabs.innerHTML = seasons.map(s =>
-    `<button class="season-tab${s===currentSeason?' active':''}" onclick="selectSeason(${show.id},${s})">
-      Season ${s}
-    </button>`
-  ).join('');
-
-  renderEpisodes(show, currentSeason);
+function renderSeasons(show){
+  const eps=show.episodes||[]; const seasons=[...new Set(eps.map(e=>e.seasonNumber))].filter(s=>s>0).sort((a,b)=>a-b);
+  if(!seasons.length){ document.getElementById('season-tabs').innerHTML=''; document.getElementById('ep-list').innerHTML='<div style="color:var(--muted);font-size:13px;padding:10px 0">No episodes found</div>'; return; }
+  if(!currentSeason||!seasons.includes(currentSeason)) currentSeason=seasons[seasons.length-1];
+  document.getElementById('season-tabs').innerHTML=seasons.map(s=>`<button class="season-tab${s===currentSeason?' active':''}" onclick="selectSeason(${show.id},${s})">Season ${s}</button>`).join('');
+  renderEpisodes(show,currentSeason);
 }
-
-function selectSeason(showId, season) {
-  currentSeason = season;
-  const show = allShows.find(s=>s.id===showId);
-  document.querySelectorAll('.season-tab').forEach(t => {
-    t.classList.toggle('active', t.textContent.trim() === `Season ${season}`);
-  });
-  renderEpisodes(show, season);
-}
-
-function renderEpisodes(show, season) {
-  const eps = (show.episodes||[]).filter(e=>e.seasonNumber===season).sort((a,b)=>a.episodeNumber-b.episodeNumber);
-  const watched = appData.watched?.[show.id] || [];
-  const svc = getSvc(show.id);
-  const list = document.getElementById('ep-list');
-
-  if (!eps.length) {
-    list.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:10px 0">No episodes in this season</div>';
-    return;
-  }
-
-  list.innerHTML = eps.map(ep => {
-    const isWatched = watched.includes(ep.id);
-    const airDate = ep.airDateUtc ? new Date(ep.airDateUtc).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : 'TBA';
-    const hasFired = ep.airDateUtc && new Date(ep.airDateUtc) <= new Date();
-    return `<div class="ep-row${isWatched?' watched':''}" id="ep-${ep.id}">
-      <div class="ep-num">${ep.episodeNumber}</div>
-      <div class="ep-info">
-        <div class="ep-name">${ep.title || `Episode ${ep.episodeNumber}`}</div>
-        <div class="ep-air">${airDate}</div>
-      </div>
-      ${hasFired ? `<button class="ep-tick${isWatched?' on':''}" onclick="toggleWatched(${show.id},${ep.id},${isWatched})" title="${isWatched?'Mark unwatched':'Mark watched'}">✓</button>` : ''}
-      ${svc && hasFired ? `<button class="ep-watch" onclick="launchShow(${show.id},'${svc}',${ep.id})">▶ Watch</button>` : ''}
-    </div>`;
+function selectSeason(showId,season){ currentSeason=season; const show=allShows.find(s=>s.id===showId);
+  document.querySelectorAll('.season-tab').forEach(t=>t.classList.toggle('active',t.textContent.trim()===`Season ${season}`)); renderEpisodes(show,season); }
+function renderEpisodes(show,season){
+  const eps=(show.episodes||[]).filter(e=>e.seasonNumber===season).sort((a,b)=>a.episodeNumber-b.episodeNumber);
+  const watched=appData.watched?.[show.id]||[]; const svc=getSvc(show.id); const list=document.getElementById('ep-list');
+  if(!eps.length){ list.innerHTML='<div style="color:var(--muted);font-size:13px;padding:10px 0">No episodes in this season</div>'; return; }
+  list.innerHTML=eps.map(ep=>{
+    const w=watched.includes(ep.id); const air=ep.airDateUtc?new Date(ep.airDateUtc).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'TBA';
+    const fired=ep.airDateUtc&&new Date(ep.airDateUtc)<=new Date();
+    return `<div class="ep-row${w?' watched':''}" id="ep-${ep.id}"><div class="ep-num">${ep.episodeNumber}</div><div class="ep-info"><div class="ep-name">${ep.title||`Episode ${ep.episodeNumber}`}</div><div class="ep-air">${air}</div></div>${fired?`<button class="ep-tick${w?' on':''}" onclick="toggleWatched(${show.id},${ep.id},${w})">✓</button>`:''}${svc&&fired?`<button class="ep-watch" onclick="launchShow(${show.id},'${svc}',${ep.id})">▶ Watch</button>`:''}</div>`;
   }).join('');
 }
+function closeModal(){ document.getElementById('show-modal').classList.remove('open'); document.body.style.overflow=''; currentShowId=null; currentSeason=null; if(_progressDirty){_progressDirty=false; render(); initDragScroll();} }
+function maybeCloseModal(e){ if(e.target===document.getElementById('show-modal')) closeModal(); }
 
-function closeModal() {
-  document.getElementById('show-modal').classList.remove('open');
-  document.body.style.overflow = '';
-  currentShowId = null;
-  currentSeason = null;
-  if (_progressDirty) { _progressDirty = false; render(); initDragScroll(); }
-}
-
-function maybeCloseModal(e) {
-  if (e.target === document.getElementById('show-modal')) closeModal();
-}
-
-// ── Service override ───────────────────────────────────────────────────────
-async function setService(showId, svc, btn) {
-  try {
-    await post(`api/shows/${showId}/service`, { service: svc });
-    if (!appData.services) appData.services = {};
-    appData.services[String(showId)] = svc || null;
-    var showObj = allShows.find(s => s.id === showId);
-    if (showObj) showObj.service = svc || null;
+async function setService(showId,svc,btn){
+  try{
+    await post(`api/shows/${showId}/service`,{service:svc});
+    if(!appData.services) appData.services={}; appData.services[String(showId)]=svc||null;
+    var o=allShows.find(s=>s.id===showId); if(o) o.service=svc||null;
     renderServiceButtons(showId);
-    // Re-render actions
-    const show = allShows.find(s=>s.id===showId);
-    const actions = document.getElementById('modal-actions');
-    actions.innerHTML = svc
-      ? `<button class="btn btn-primary" onclick="launchShow(${showId},'${svc}')">▶ Watch on ${SVCS[svc]||svc}</button>
-         <button class="btn btn-ghost" onclick="scanShow(${showId})">🔍 Scan</button>`
-      : `<button class="btn btn-ghost" onclick="scanShow(${showId})">🔍 Find Streaming Service</button>`;
-    // Re-render season episodes to show/hide watch buttons
-    if (show?.episodes) renderEpisodes(show, currentSeason);
+    const next=getNextUp(allShows.find(s=>s.id===showId)); const actions=document.getElementById('modal-actions');
+    actions.innerHTML=svc?((next?`<button class="btn btn-primary" onclick="resumeShow(${showId})">▶ Resume ${epLabel(next)}</button>`:'')+`<button class="btn btn-ghost" onclick="launchShow(${showId},'${svc}')">📺 Open ${SVCS[svc]||svc}</button><button class="btn btn-ghost" onclick="scanShow(${showId})">🔍 Scan</button>`):`<button class="btn btn-ghost" onclick="scanShow(${showId})">🔍 Find streaming service</button>`;
     toast(`Service set to ${SVCS[svc]||svc||'none'}`);
-    // Auto-fetch deep link for the manually chosen service
-    // Pass forceSvc so TMDB result doesn't overwrite the manual choice
-    if (svc) {
-      const show2 = allShows.find(s => s.id === showId);
-      if (show2?.tvdbId) {
-        if (appData.deep_links) delete appData.deep_links[String(showId)];
-        if (show2) show2.deep_link = null;
-        scanShow(showId, svc);
-      }
-    }
-  } catch(e) { toast('Failed to set service','error'); }
+    if(svc){ const s2=allShows.find(s=>s.id===showId); if(s2?.tvdbId){ if(appData.deep_links) delete appData.deep_links[String(showId)]; s2.deep_link=null; scanShow(showId,svc); } }
+  }catch(e){ toast('Failed to set service','error'); }
 }
-
-// ── Watched ────────────────────────────────────────────────────────────────
-async function toggleWatched(sid, epId, isWatched) {
-  if (isWatched) {
-    appData.watched[sid] = (appData.watched[sid]||[]).filter(e=>e!==epId);
-    await del(`api/shows/${sid}/watched/${epId}`);
-  } else {
-    if (!appData.watched[sid]) appData.watched[sid] = [];
-    appData.watched[sid].push(epId);
-    await post(`api/shows/${sid}/watched/${epId}`, {});
-  }
-  const row = document.getElementById(`ep-${epId}`);
-  if (row) {
-    row.classList.toggle('watched', !isWatched);
-    const btn = row.querySelector('.ep-tick');
-    if (btn) { btn.textContent='✓'; btn.classList.toggle('on', !isWatched); }
-  }
-  // Keep Continue Watching / next-up in sync with the tick.
-  const showObj = allShows.find(s => s.id === sid);
-  if (showObj) recomputeNextUp(showObj);
-  _progressDirty = true;
+async function toggleWatched(sid,epId,isW){
+  if(isW){ appData.watched[sid]=(appData.watched[sid]||[]).filter(e=>e!==epId); await del(`api/shows/${sid}/watched/${epId}`); }
+  else{ if(!appData.watched[sid]) appData.watched[sid]=[]; appData.watched[sid].push(epId); await post(`api/shows/${sid}/watched/${epId}`,{}); }
+  const row=document.getElementById(`ep-${epId}`); if(row){ row.classList.toggle('watched',!isW); const b=row.querySelector('.ep-tick'); if(b){ b.classList.toggle('on',!isW); } }
+  const o=allShows.find(s=>s.id===sid); if(o) recomputeNextUp(o); _progressDirty=true;
 }
-
-// ── Resume (Continue Watching) ───────────────────────────────────────────────
-function resumeShow(showId) {
-  const svc = getSvc(showId);
-  if (!svc) { openModal(showId); toast('Pick a streaming service first', 'error'); return; }
-  // Deep-links to the show page; the app's own "Continue Watching" resumes your spot.
-  launchShow(showId, svc);
+function resumeShow(showId){ const svc=getSvc(showId); if(!svc){ openModal(showId); toast('Pick a streaming service first','error'); return; } launchShow(showId,svc); }
+async function launchShow(sid,svc,epId){
+  toast(`Launching ${SVCS[svc]||svc}…`);
+  try{ await post('api/firetv/launch',{service:svc,profileIndex:-1,showId:sid}); }catch(e){ toast('Launch failed: '+e.message,'error'); return; }
+  showHandoffOverlay(svc,sid);
 }
-
-// ── Launch ─────────────────────────────────────────────────────────────────
-async function launchShow(sid, svc, epId) {
-  // Step 1: Launch the app on Fire TV (force-stop + fresh start, no profile automation)
-  toast(`🔥 Launching ${SVCS[svc]||svc}…`);
-  try {
-    await post('api/firetv/launch', { service: svc, profileIndex: -1, showId: sid });
-  } catch(e) {
-    toast('Launch failed: ' + e.message, 'error');
-    return;
-  }
-  // Step 2: Show handoff overlay - user handles profile/PIN, then clicks Ready
-  showHandoffOverlay(svc, sid);
-}
-
-function showHandoffOverlay(svc, showId) {
-  const svcName = SVCS[svc] || svc;
-  const el = document.createElement('div');
-  el.className = 'handoff-overlay';
-  el.id = 'handoff-overlay';
-  el.innerHTML = `
-    <div class="handoff-box">
-      <div class="handoff-app-icon">📺</div>
-      <div class="handoff-title">${svcName} is opening</div>
-      <div class="handoff-sub">
-        <span class="handoff-pulse"></span>
-        Select your profile, enter your PIN if needed,<br>
-        then wait for the home screen to load.<br>
-        <strong>Click Ready</strong> when you see the home screen.
-      </div>
-      <div class="handoff-remote">
-        <button class="remote-btn hr-up" onclick="remote('KEYCODE_DPAD_UP')">▲</button>
-        <button class="remote-btn hr-left" onclick="remote('KEYCODE_DPAD_LEFT')">◀</button>
-        <button class="remote-btn hr-ok" onclick="remote('KEYCODE_DPAD_CENTER')">OK</button>
-        <button class="remote-btn hr-right" onclick="remote('KEYCODE_DPAD_RIGHT')">▶</button>
-        <button class="remote-btn hr-down" onclick="remote('KEYCODE_DPAD_DOWN')">▼</button>
-        <button class="remote-btn hr-back" onclick="remote('KEYCODE_BACK')">↩</button>
-        <button class="remote-btn hr-home" onclick="remote('KEYCODE_HOME')">⌂</button>
-      </div>
-      <button class="handoff-ready" onclick="handoffReady('${svc}', ${showId})">
-        ✓ I'm Ready — Go to Show
-      </button>
-      <button class="handoff-cancel" onclick="document.getElementById('handoff-overlay').remove()">
-        Cancel
-      </button>
-    </div>`;
+function showHandoffOverlay(svc,showId){
+  const n=SVCS[svc]||svc; const el=document.createElement('div'); el.className='handoff-overlay'; el.id='handoff-overlay';
+  el.innerHTML=`<div class="handoff-box"><div class="handoff-title">${n} is opening</div><div class="handoff-sub"><span class="handoff-pulse"></span>Pick your profile and enter any PIN, then click ready when you see the home screen.</div><div class="handoff-remote"><button class="db hr-up" onclick="remote('KEYCODE_DPAD_UP')">▲</button><button class="db hr-left" onclick="remote('KEYCODE_DPAD_LEFT')">◀</button><button class="db hr-ok" onclick="remote('KEYCODE_DPAD_CENTER')">OK</button><button class="db hr-right" onclick="remote('KEYCODE_DPAD_RIGHT')">▶</button><button class="db hr-down" onclick="remote('KEYCODE_DPAD_DOWN')">▼</button><button class="db hr-back" onclick="remote('KEYCODE_BACK')">↩</button><button class="db hr-home" onclick="remote('KEYCODE_HOME')">⌂</button></div><button class="handoff-ready" onclick="handoffReady('${svc}',${showId})">✓ I'm ready — go to show</button><button class="handoff-cancel" onclick="document.getElementById('handoff-overlay').remove()">Cancel</button></div>`;
   document.body.appendChild(el);
 }
-
-async function handoffReady(svc, showId) {
-  const overlay = document.getElementById('handoff-overlay');
-  if (overlay) {
-    overlay.querySelector('.handoff-ready').textContent = '⟳ Navigating to show…';
-    overlay.querySelector('.handoff-ready').disabled = true;
-  }
-  try {
-    const res = await post('api/firetv/deeplink', { service: svc, showId });
-    toast(`✓ Opening show on ${SVCS[svc]||svc}`);
-  } catch(e) {
-    toast('Navigation failed: ' + e.message, 'error');
-  }
-  if (overlay) overlay.remove();
-  closeModal();
+async function handoffReady(svc,showId){
+  const ov=document.getElementById('handoff-overlay');
+  if(ov){ const b=ov.querySelector('.handoff-ready'); b.textContent='⟳ Navigating…'; b.disabled=true; }
+  try{ await post('api/firetv/deeplink',{service:svc,showId}); toast(`Opening show on ${SVCS[svc]||svc}`); }
+  catch(e){ toast('Navigation failed: '+e.message,'error'); }
+  if(ov) ov.remove(); closeModal();
 }
-
-async function doLaunch(svc, profileIndex, showId) {
-  toast(`🔥 Launching ${SVCS[svc]||svc}…`);
-  try {
-    const res = await post('api/firetv/launch', { service:svc, profileIndex, showId });
-    toast(`✓ ${res.deep_link ? 'Opening show on' : 'Launched'} ${SVCS[svc]||svc}`);
-    closeModal();
-  } catch(e) { toast('Launch failed: '+e.message,'error'); }
-}
-
-// ── Profile picker ─────────────────────────────────────────────────────────
-function showProfilePicker(svc, onSelect) {
-  _profCb = onSelect;
-  const profiles = appData.profiles?.[svc] || [];
-  const avatars = ['🧑','👧','🧔','👩','👦','🧓'];
-  const el = document.createElement('div');
-  el.className = 'prof-overlay';
-  el.id = 'prof-overlay';
-  el.innerHTML = `
-    <div class="prof-box">
-      <div class="prof-title">Who's watching?</div>
-      <div class="prof-app">${SVCS[svc]||svc}</div>
-      <div class="prof-grid">
-        ${profiles.map((p,i)=>`
-          <button class="prof-btn" onclick="selectProfile(${i})">
-            <span class="prof-avatar">${avatars[i%avatars.length]}</span>
-            <span>${p}</span>
-          </button>`).join('')}
-      </div>
-      <button class="prof-cancel" onclick="document.getElementById('prof-overlay').remove()">Cancel</button>
-    </div>`;
+function showProfilePicker(svc,onSelect){
+  _profCb=onSelect; const profiles=appData.profiles?.[svc]||[]; const av=['🧑','👧','🧔','👩','👦','🧓'];
+  const el=document.createElement('div'); el.className='prof-overlay'; el.id='prof-overlay';
+  el.innerHTML=`<div class="prof-box"><div class="prof-title">Who's watching?</div><div class="prof-app">${SVCS[svc]||svc}</div><div class="prof-grid">${profiles.map((p,i)=>`<button class="prof-btn" onclick="selectProfile(${i})"><span class="prof-avatar">${av[i%av.length]}</span><span>${p}</span></button>`).join('')}</div><button class="prof-cancel" onclick="document.getElementById('prof-overlay').remove()">Cancel</button></div>`;
   document.body.appendChild(el);
 }
+function selectProfile(i){ document.getElementById('prof-overlay')?.remove(); if(_profCb){ _profCb(i); _profCb=null; } }
 
-function selectProfile(i) {
-  document.getElementById('prof-overlay')?.remove();
-  if (_profCb) { _profCb(i); _profCb = null; }
+async function scanShow(showId,forceSvc){
+  const st=document.getElementById('scan-toast'); const show=allShows.find(s=>s.id===showId);
+  document.getElementById('scan-msg').textContent=`Getting link for ${show?.title||'show'}…`; st.classList.add('show');
+  try{
+    const tvdbId=show?.tvdbId; const title=encodeURIComponent(show?.title||'');
+    if(!tvdbId){ toast('No TVDB ID for this show','error'); st.classList.remove('show'); return; }
+    const res=await get(`api/shows/${showId}/scan-service?tvdb_id=${tvdbId}&title=${title}`);
+    const svcToUse=forceSvc||res.service;
+    if(svcToUse){
+      if(!appData.services) appData.services={};
+      if(!forceSvc){ appData.services[String(showId)]=svcToUse; var o2=allShows.find(s=>s.id===showId); if(o2) o2.service=svcToUse; }
+      var deepLink=res.deep_link;
+      if(forceSvc&&res.service!==forceSvc){
+        const sl={netflix:`https://www.netflix.com/search?q=${title}`,hulu:`https://www.hulu.com/search?q=${title}`,disney:`https://www.disneyplus.com/search/${title}`,max:`https://play.max.com/search/result?q=${title}`,peacock:`https://www.peacocktv.com/search?q=${title}`,discovery:`https://play.discoveryplus.com/show/${title.toLowerCase().replace(/%20/g,'-')}`,prime:`https://www.amazon.com/s?k=${title}&i=prime-instant-video`,paramount:`https://www.paramountplus.com/shows/${title.toLowerCase().replace(/%20/g,'-')}/`,apple:`https://tv.apple.com/search?term=${title}`};
+        deepLink=sl[forceSvc]||null; if(deepLink) await post(`api/shows/${showId}/service`,{service:forceSvc,deep_link:deepLink});
+      }
+      if(deepLink){ if(!appData.deep_links) appData.deep_links={}; appData.deep_links[String(showId)]=deepLink; var o3=allShows.find(s=>s.id===showId); if(o3) o3.deep_link=deepLink; }
+      const disp=forceSvc||svcToUse;
+      toast(`✓ ${forceSvc?'Link ready for':'Found on'} ${SVCS[disp]||disp}`);
+      if(currentShowId===showId){ renderServiceButtons(showId); const next=getNextUp(allShows.find(s=>s.id===showId)); document.getElementById('modal-actions').innerHTML=(next?`<button class="btn btn-primary" onclick="resumeShow(${showId})">▶ Resume ${epLabel(next)}</button>`:'')+`<button class="btn btn-ghost" onclick="launchShow(${showId},'${disp}')">📺 Open ${SVCS[disp]||disp}</button><button class="btn btn-ghost" onclick="scanShow(${showId})">🔍 Scan</button>`; }
+    } else { toast('Not found on any streaming service','error'); }
+  }catch(e){ toast('Scan failed: '+e.message,'error'); }
+  st.classList.remove('show');
 }
-
-// ── Scan ───────────────────────────────────────────────────────────────────
-async function scanShow(showId, forceSvc) {
-  // forceSvc: when set, keep this service regardless of TMDB result (used after manual override)
-  const scanToast = document.getElementById('scan-toast');
-  const show = allShows.find(s=>s.id===showId);
-  document.getElementById('scan-msg').textContent = `Getting link for ${show?.title||'show'}…`;
-  scanToast.classList.add('show');
-  try {
-    const tvdbId = show?.tvdbId;
-    const title = encodeURIComponent(show?.title || '');
-    if (!tvdbId) { toast('No TVDB ID for this show', 'error'); scanToast.classList.remove('show'); return; }
-    const res = await get(`api/shows/${showId}/scan-service?tvdb_id=${tvdbId}&title=${title}`);
-    // If forceSvc is set, use that service — don't let TMDB overwrite the manual choice
-    const svcToUse = forceSvc || res.service;
-    if (svcToUse) {
-      if (!appData.services) appData.services = {};
-      // Only update service if not forcing (auto-scan) or if forcing and matches TMDB
-      if (!forceSvc) {
-        appData.services[String(showId)] = svcToUse;
-        var showObj2 = allShows.find(s => s.id === showId);
-        if (showObj2) showObj2.service = svcToUse;
-      }
-      // Build deep link for the correct service
-      var deepLink = res.deep_link;
-      // If TMDB found a different service, we still want a deep link for forceSvc
-      if (forceSvc && res.service !== forceSvc) {
-        // Build a search-based deep link for the manually chosen service
-        const searchLinks = {
-          netflix: `https://www.netflix.com/search?q=${title}`,
-          hulu: `https://www.hulu.com/search?q=${title}`,
-          disney: `https://www.disneyplus.com/search/${title}`,
-          max: `https://play.max.com/search/result?q=${title}`,
-          peacock: `https://www.peacocktv.com/search?q=${title}`,
-          discovery: `https://play.discoveryplus.com/show/${title.toLowerCase().replace(/%20/g,'-')}`,
-          prime: `https://www.amazon.com/s?k=${title}&i=prime-instant-video`,
-          paramount: `https://www.paramountplus.com/shows/${title.toLowerCase().replace(/%20/g,'-')}/`,
-          apple: `https://tv.apple.com/search?term=${title}`,
-        };
-        deepLink = searchLinks[forceSvc] || null;
-        // Save the forced deep link to backend
-        if (deepLink) {
-          await post(`api/shows/${showId}/service`, { service: forceSvc, deep_link: deepLink });
-        }
-      }
-      if (deepLink) {
-        if (!appData.deep_links) appData.deep_links = {};
-        appData.deep_links[String(showId)] = deepLink;
-        var showObj3 = allShows.find(s => s.id === showId);
-        if (showObj3) showObj3.deep_link = deepLink;
-      }
-      const displaySvc = forceSvc || svcToUse;
-      toast(`✓ ${forceSvc ? 'Link ready for' : 'Found on'} ${SVCS[displaySvc]||displaySvc}${deepLink ? ' ▶' : ''}`);
-      if (currentShowId === showId) {
-        renderServiceButtons(showId);
-        const showNow = allShows.find(s=>s.id===showId);
-        if (showNow?.episodes) renderEpisodes(showNow, currentSeason);
-        document.getElementById('modal-actions').innerHTML =
-          `<button class="btn btn-primary" onclick="launchShow(${showId},'${displaySvc}')">▶ Watch on ${SVCS[displaySvc]||displaySvc}</button>
-           <button class="btn btn-ghost" onclick="scanShow(${showId})">🔍 Scan</button>`;
-      }
-    } else {
-      toast('Not found on any streaming service', 'error');
-    }
-  } catch(e) { toast('Scan failed: ' + e.message, 'error'); }
-  scanToast.classList.remove('show');
-}
-
-async function scanAll() {
-  const btn = document.getElementById('btn-scan-all');
-  btn.disabled = true;
-  const scanToast = document.getElementById('scan-toast');
-  document.getElementById('scan-msg').textContent = 'Refreshing shows…';
-  scanToast.classList.add('show');
-  try {
-    // Always fetch fresh show list from Sonarr first to pick up newly added shows
-    const freshShows = await get('api/shows');
-    allShows = freshShows;
-    document.getElementById('scan-msg').textContent = `Scanning ${freshShows.length} shows…`;
-    const res = await post('api/scan-all', { shows: freshShows.map(s => ({id:s.id, tvdbId:s.tvdbId, title:s.title})) });
-    if (res.results) Object.assign(appData.services, res.results);
-    toast(`✓ Found streaming service for ${res.found||0} of ${res.scanned||0} shows`);
+async function scanAll(){
+  const btn=document.getElementById('btn-scan-all'); btn.disabled=true;
+  const st=document.getElementById('scan-toast'); document.getElementById('scan-msg').textContent='Refreshing shows…'; st.classList.add('show');
+  try{
+    const fresh=await get('api/shows'); allShows=fresh;
+    document.getElementById('scan-msg').textContent=`Scanning ${fresh.length} shows…`;
+    const res=await post('api/scan-all',{shows:fresh.map(s=>({id:s.id,tvdbId:s.tvdbId,title:s.title}))});
+    if(res.results) Object.assign(appData.services,res.results);
+    toast(`✓ Found service for ${res.found||0} of ${res.scanned||0} shows`);
     await loadShows();
-  } catch(e) { toast('Scan failed: ' + e.message, 'error'); }
-  scanToast.classList.remove('show');
-  btn.disabled = false;
+  }catch(e){ toast('Scan failed: '+e.message,'error'); }
+  st.classList.remove('show'); btn.disabled=false;
 }
 
-// ── Fire TV Remote ──────────────────────────────────────────────────────────
-async function remote(key) {
-  try { await post('api/firetv/command', { command: key }); }
-  catch(e) { toast('Remote error','error'); }
+async function remote(key){ try{ await post('api/firetv/command',{command:key}); }catch(e){ toast('Remote error','error'); } }
+
+var sonosState={volume:.42,muted:false,speech:false,night:false};
+async function sonosLoadState(){ try{ const s=await get('api/sonos/state'); sonosState={volume:s.volume||0,muted:s.muted||false,speech:s.speech_enhancement||false,night:s.night_mode||false}; updateSonosUI(); }catch(e){} }
+function updateSonosUI(){
+  const p=Math.round(sonosState.volume*100);
+  const bar=document.getElementById('vol-bar'); if(bar) bar.style.width=p+'%';
+  const pe=document.getElementById('vol-pct'); if(pe) pe.textContent=p+'%';
+  const m=document.getElementById('btn-mute'); if(m) m.classList.toggle('on',sonosState.muted);
+  const se=document.getElementById('btn-speech'); if(se) se.classList.toggle('on',sonosState.speech);
+  const ni=document.getElementById('btn-night'); if(ni) ni.classList.toggle('on',sonosState.night);
+}
+async function sonosCmd(cmd){
+  try{
+    if(cmd==='volume_up'){ sonosState.volume=Math.min(1,Math.round((sonosState.volume+.05)*100)/100); updateSonosUI(); await post('api/sonos/command',{command:cmd,current:sonosState.volume}); }
+    else if(cmd==='volume_down'){ sonosState.volume=Math.max(0,Math.round((sonosState.volume-.05)*100)/100); updateSonosUI(); await post('api/sonos/command',{command:cmd,current:sonosState.volume}); }
+    else if(cmd==='mute'){ const nm=!sonosState.muted; sonosState.muted=nm; updateSonosUI(); await post('api/sonos/command',{command:cmd,muted:!nm}); }
+    else if(cmd==='speech_enhancement'){ const ns=!sonosState.speech; sonosState.speech=ns; updateSonosUI(); await post('api/sonos/command',{command:cmd,state:ns}); }
+    else if(cmd==='night_mode'){ const nn=!sonosState.night; sonosState.night=nn; updateSonosUI(); await post('api/sonos/command',{command:cmd,state:nn}); }
+  }catch(e){ toast('Sonos error: '+e.message,'error'); }
 }
 
-// ── Sonos ────────────────────────────────────────────────────────────────────
-var sonosState = { volume: 0.36, muted: false, speech: false, night: false };
-
-async function sonosLoadState() {
-  try {
-    const s = await get('api/sonos/state');
-    sonosState = { volume: s.volume||0, muted: s.muted||false, speech: s.speech_enhancement||false, night: s.night_mode||false };
-    updateSonosUI();
-  } catch(e) {}
-}
-
-function updateSonosUI() {
-  const pct = Math.round(sonosState.volume * 100);
-  const bar = document.getElementById('vol-bar');
-  if (bar) bar.style.width = pct + '%';
-  const pctEl = document.getElementById('vol-pct');
-  if (pctEl) pctEl.textContent = pct + '%';
-  const btnMute = document.getElementById('btn-mute');
-  if (btnMute) btnMute.classList.toggle('active-btn', sonosState.muted);
-  const btnSpeech = document.getElementById('btn-speech');
-  if (btnSpeech) btnSpeech.classList.toggle('active-btn', sonosState.speech);
-  const btnNight = document.getElementById('btn-night');
-  if (btnNight) btnNight.classList.toggle('active-btn', sonosState.night);
-}
-
-async function sonosCmd(cmd) {
-  try {
-    if (cmd === 'volume_up') {
-      sonosState.volume = Math.min(1.0, Math.round((sonosState.volume + 0.05) * 100) / 100);
-      updateSonosUI();
-      await post('api/sonos/command', { command: cmd, current: sonosState.volume });
-    } else if (cmd === 'volume_down') {
-      sonosState.volume = Math.max(0.0, Math.round((sonosState.volume - 0.05) * 100) / 100);
-      updateSonosUI();
-      await post('api/sonos/command', { command: cmd, current: sonosState.volume });
-    } else if (cmd === 'mute') {
-      const newMuted = !sonosState.muted;
-      sonosState.muted = newMuted;
-      updateSonosUI();
-      await post('api/sonos/command', { command: cmd, muted: !newMuted }); // send OLD state so backend toggles
-    } else if (cmd === 'speech_enhancement') {
-      const newSpeech = !sonosState.speech;
-      sonosState.speech = newSpeech;
-      updateSonosUI();
-      await post('api/sonos/command', { command: cmd, state: newSpeech }); // send NEW desired state
-    } else if (cmd === 'night_mode') {
-      const newNight = !sonosState.night;
-      sonosState.night = newNight;
-      updateSonosUI();
-      await post('api/sonos/command', { command: cmd, state: newNight }); // send NEW desired state
-    }
-  } catch(e) { toast('Sonos error: ' + e.message, 'error'); }
-}
-
-// ── Keyboard ───────────────────────────────────────────────────────────────
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') closeModal();
-});
-
-// ── Mouse drag scroll for rows ───────────────────────────────────────────
-function initDragScroll() {
-  document.querySelectorAll('.row-scroll').forEach(row => {
-    if (row._dragInit) return;
-    row._dragInit = true;
-    let isDown = false, startX, scrollLeft;
-    row.addEventListener('mousedown', e => {
-      isDown = true;
-      startX = e.pageX - row.offsetLeft;
-      scrollLeft = row.scrollLeft;
-    });
-    row.addEventListener('mouseleave', () => isDown = false);
-    row.addEventListener('mouseup', () => isDown = false);
-    row.addEventListener('mousemove', e => {
-      if (!isDown) return;
-      e.preventDefault();
-      const x = e.pageX - row.offsetLeft;
-      row.scrollLeft = scrollLeft - (x - startX) * 1.5;
-    });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeModal(); });
+function initDragScroll(){
+  document.querySelectorAll('.cw').forEach(row=>{
+    if(row._d) return; row._d=true; let down=false,sx,sl;
+    row.addEventListener('mousedown',e=>{down=true;sx=e.pageX-row.offsetLeft;sl=row.scrollLeft;});
+    row.addEventListener('mouseleave',()=>down=false); row.addEventListener('mouseup',()=>down=false);
+    row.addEventListener('mousemove',e=>{ if(!down) return; e.preventDefault(); row.scrollLeft=sl-((e.pageX-row.offsetLeft)-sx)*1.5; });
   });
 }
-
-// ── Init ───────────────────────────────────────────────────────────────────
-if (!window.__tvGuideLoaded) {
-  window.__tvGuideLoaded = true;
-  loadShows();
-  sonosLoadState();
-}
+if(!window.__tvg){ window.__tvg=true; loadShows(); sonosLoadState(); }
 </script>
 </body>
 </html>

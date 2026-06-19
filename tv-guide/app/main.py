@@ -81,8 +81,8 @@ LAUNCH_TIMING = {
 # slam the cursor to a known edge then step a fixed number. Apps not listed here
 # default to accessibility tap-by-name via the helper.
 PROFILE_NAV = {
-    "netflix": {"method": "blind", "slam_key": 19, "slam_count": 6,
-                "step_key": 20, "select_key": 23, "gap": 0.45, "pre": 6, "post": 8},
+    "netflix": {"method": "blind", "slam_key": 19, "slam_count": 8,
+                "step_key": 20, "select_key": 23, "gap": 0.5, "pre": 12, "post": 8},
 }
 
 # ── Persistence ───────────────────────────────────────────────────────────
@@ -669,6 +669,13 @@ async def helper_proxy(path: str, request: Request):
 async def _do_play(svc, pkg, profiles, profile_index, nav, deep_link):
     """Runs in the background so the HTTP request returns instantly."""
     async with httpx.AsyncClient() as client:
+        # Cold-start the app when we need its profile screen (so presses aren't lost).
+        if profile_index is not None and profile_index >= 0 and len(profiles) > 1:
+            try:
+                await ha_adb(client, f"am force-stop {pkg}")
+                await asyncio.sleep(1.0)
+            except Exception:
+                pass
         # 1) Reliable native launch via the helper (fall back to ADB).
         used_helper = True
         try:

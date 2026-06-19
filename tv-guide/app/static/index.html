@@ -68,7 +68,7 @@
   .empty{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:50vh;gap:14px;color:var(--muted);text-align:center}
   .empty .ei{font-size:54px;opacity:.4}
   .empty h2{font-size:24px;color:var(--text)}
-  .skرow{display:grid;grid-template-columns:repeat(auto-fill,minmax(146px,1fr));gap:16px}
+  .skrow{display:grid;grid-template-columns:repeat(auto-fill,minmax(146px,1fr));gap:16px}
   .skel{aspect-ratio:2/3;border-radius:14px;background:linear-gradient(90deg,var(--panel) 25%,var(--panel2) 50%,var(--panel) 75%);background-size:200% 100%;animation:sh 1.4s infinite}
   @keyframes sh{to{background-position:-200% 0}}
   /* MODAL */
@@ -148,6 +148,8 @@
   .db{width:40px;height:40px;border-radius:11px;background:var(--panel2);color:#fff;border:none;font-size:16px;cursor:pointer;flex-shrink:0}
   .db:hover{background:#272b3b}
   .db.on{background:var(--violet);color:#fff}
+  .db.power{background:#7a1f24}
+  .db.power.on{background:var(--teal);color:#062b26}
   .vbar{width:96px;height:6px;background:rgba(255,255,255,.16);border-radius:3px;overflow:hidden}
   .vbar>i{display:block;height:100%;width:42%;background:var(--violet)}
   .sep{width:1px;height:34px;background:var(--line);flex-shrink:0}
@@ -202,7 +204,7 @@
 
 <main id="main-content">
   <div class="sh"><h2>Loading…</h2></div>
-  <div class="skрow">
+  <div class="skrow">
     <div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div>
     <div class="skel"></div><div class="skel"></div>
   </div>
@@ -211,7 +213,7 @@
 <div class="dock">
   <div class="dgrp">
     <span class="dlbl">FIRE&nbsp;TV</span>
-    <button class="db" id="btn-power" onclick="powerToggle()" title="Power Fire TV + LG TV" style="background:#7a1f24">⏻</button>
+    <button class="db power" id="btn-power" onclick="powerToggle()" title="Power Fire TV + LG TV">⏻</button>
     <div class="pad">
       <span></span><button class="pk" onclick="remote('KEYCODE_DPAD_UP')">▲</button><span></span>
       <button class="pk" onclick="remote('KEYCODE_DPAD_LEFT')">◀</button><button class="pk c" onclick="remote('KEYCODE_DPAD_CENTER')">OK</button><button class="pk" onclick="remote('KEYCODE_DPAD_RIGHT')">▶</button>
@@ -237,10 +239,10 @@
 <div class="modal-backdrop" id="show-modal" onclick="maybeCloseModal(event)">
   <div class="modal" id="modal-inner">
     <div class="modal-hero">
-      <img id="modal-fanart" src="" alt="">
+      <img id="modal-fanart" src="" alt="" onerror="this.style.visibility='hidden'">
       <button class="modal-close" onclick="closeModal()">✕</button>
       <div class="modal-hero-info">
-        <img id="modal-poster" class="modal-poster" src="" alt="">
+        <img id="modal-poster" class="modal-poster" src="" alt="" onerror="this.style.display='none'">
         <div style="flex:1">
           <div class="modal-title" id="modal-title"></div>
           <div class="modal-meta" id="modal-meta"></div>
@@ -277,8 +279,8 @@
 </div>
 
 <script>
-var COL={netflix:'#e50914',hulu:'#1ce783',disney:'#4a7bff',max:'#4d7cff',peacock:'#f7b500',discovery:'#3b9bff',prime:'#19b3e6',paramount:'#1f6bff',apple:'#d8d8d8',plex:'#e5a00d',tubi:'#fa3c00',pluto:'#ffd400',youtube:'#ff3a30'};
-var SVCS={netflix:'Netflix',hulu:'Hulu',disney:'Disney+',max:'Max',peacock:'Peacock',discovery:'Discovery+',prime:'Prime Video',apple:'Apple TV+',paramount:'Paramount+',plex:'Plex',tubi:'Tubi',pluto:'Pluto TV',youtube:'YouTube'};
+var COL={netflix:'#e50914',hulu:'#1ce783',disney:'#4a7bff',max:'#4d7cff',peacock:'#f7b500',discovery:'#3b9bff',prime:'#19b3e6',paramount:'#1f6bff',apple:'#d8d8d8',plex:'#e5a00d',tubi:'#fa3c00',pluto:'#ffd400',youtube:'#ff3a30',amc:'#cf102d',shudder:'#7d2027',crunchyroll:'#f47521',starz:'#0fb0e7'};
+var SVCS={netflix:'Netflix',hulu:'Hulu',disney:'Disney+',max:'Max',peacock:'Peacock',discovery:'Discovery+',prime:'Prime Video',apple:'Apple TV+',paramount:'Paramount+',plex:'Plex',tubi:'Tubi',pluto:'Pluto TV',youtube:'YouTube',amc:'AMC+',shudder:'Shudder',crunchyroll:'Crunchyroll',starz:'Starz'};
 
 var appData={shows:[],watched:{},services:{},deep_links:{},profiles:{},nextup:{}};
 var allShows=[];
@@ -529,8 +531,9 @@ async function scanAll(){
 
 async function powerToggle(){ try{ const r=await post('api/power',{action:'toggle'}); toast('Power '+(r.action==='on'?'on':'off')+' · Fire TV + LG TV'); const b=document.getElementById('btn-power'); if(b) b.classList.toggle('on',r.action==='on'); }catch(e){ toast('Power failed: '+e.message,'error'); } }
 async function remote(key){ try{ await post('api/firetv/command',{command:key}); }catch(e){ toast('Remote error','error'); } }
+async function loadPowerState(){ try{ const r=await get('api/power/state'); const b=document.getElementById('btn-power'); if(b) b.classList.toggle('on',!!r.on); }catch(e){} }
 
-var sonosState={volume:.42,muted:false,speech:false,night:false};
+var sonosState={volume:.42,muted:false,speech:false,night:false},_sonosSync=null;
 async function sonosLoadState(){ try{ const s=await get('api/sonos/state'); sonosState={volume:s.volume||0,muted:s.muted||false,speech:s.speech_enhancement||false,night:s.night_mode||false}; updateSonosUI(); }catch(e){} }
 function updateSonosUI(){
   const p=Math.round(sonosState.volume*100);
@@ -547,10 +550,11 @@ async function sonosCmd(cmd){
     else if(cmd==='mute'){ const nm=!sonosState.muted; sonosState.muted=nm; updateSonosUI(); await post('api/sonos/command',{command:cmd,muted:!nm}); }
     else if(cmd==='speech_enhancement'){ const ns=!sonosState.speech; sonosState.speech=ns; updateSonosUI(); await post('api/sonos/command',{command:cmd,state:ns}); }
     else if(cmd==='night_mode'){ const nn=!sonosState.night; sonosState.night=nn; updateSonosUI(); await post('api/sonos/command',{command:cmd,state:nn}); }
+    clearTimeout(_sonosSync); _sonosSync=setTimeout(sonosLoadState,800);
   }catch(e){ toast('Sonos error: '+e.message,'error'); }
 }
 
-document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeModal(); });
+document.addEventListener('keydown',e=>{ if(e.key!=='Escape') return; const ov=document.querySelector('.prof-overlay,.handoff-overlay'); if(ov){ ov.remove(); return; } closeModal(); });
 function initDragScroll(){
   document.querySelectorAll('.cw').forEach(row=>{
     if(row._d) return; row._d=true; let down=false,sx,sl;
@@ -630,7 +634,7 @@ async function unarchiveShow(id){ try{ await post(`api/shows/${id}/unarchive`,{}
 async function restoreShow(tvdb,btn){ if(btn){btn.disabled=true;btn.textContent='Restoring…';} try{ const r=await post('api/restore',{tvdbId:tvdb}); toast('Restored '+(r.title||'')); await loadShows(); renderArchive(); }catch(e){ if(btn){btn.disabled=false;btn.textContent='↺ Restore';} toast('Restore failed: '+e.message,'error'); } }
 async function purgeRemoved(tvdb){ try{ await del('api/removed/'+tvdb); toast('Deleted from history'); renderArchive(); }catch(e){ toast('Failed: '+e.message,'error'); } }
 
-if(!window.__tvg){ window.__tvg=true; loadShows(); sonosLoadState(); }
+if(!window.__tvg){ window.__tvg=true; loadShows(); sonosLoadState(); loadPowerState(); }
 </script>
 </body>
 </html>

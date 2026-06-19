@@ -1,4 +1,5 @@
 import os, json, asyncio, re, httpx
+from datetime import datetime, timezone
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -159,6 +160,11 @@ async def get_shows():
             result = []
             for s in shows:
                 sid = str(s["id"])
+                # Sonarr v3 nests counts under "statistics", not top-level.
+                stats = s.get("statistics", {}) or {}
+                season_count = stats.get("seasonCount")
+                if season_count is None:
+                    season_count = len([se for se in s.get("seasons", []) if se.get("seasonNumber", 0) > 0])
                 result.append({
                     "id": s["id"],
                     "title": s["title"],
@@ -166,12 +172,16 @@ async def get_shows():
                     "year": s.get("year"),
                     "network": s.get("network"),
                     "overview": s.get("overview", ""),
+                    "monitored": s.get("monitored", False),
                     "nextAiring": s.get("nextAiring"),
+                    "previousAiring": s.get("previousAiring"),
                     "images": s.get("images", []),
                     "poster": f"{SONARR_URL}/api/v3/mediacover/{s['id']}/poster.jpg?apikey={SONARR_KEY}",
                     "fanart": f"{SONARR_URL}/api/v3/mediacover/{s['id']}/fanart.jpg?apikey={SONARR_KEY}",
-                    "seasonCount": s.get("seasonCount", 0),
-                    "episodeCount": s.get("episodeCount", 0),
+                    "seasonCount": season_count,
+                    "episodeCount": stats.get("episodeCount", 0),
+                    "totalEpisodeCount": stats.get("totalEpisodeCount", 0),
+                    "episodeFileCount": stats.get("episodeFileCount", 0),
                     "tvdbId": s.get("tvdbId"),
                     "genres": s.get("genres", []),
                     "service": d["services"].get(sid),
@@ -218,6 +228,70 @@ async def get_episodes(show_id: int):
         result.sort(key=lambda x: (x["seasonNumber"], x["episodeNumber"]))
         return result
 
+# ── Next up / Continue Watching ─────────────────────────────────────────────
+def _parse_air(ad):
+    if not ad:
+        return None
+    try:
+        return datetime.fromisoformat(str(ad).replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+@app.get("/api/nextup")
+async def next_up():
+    """For every series, compute the next unwatched AIRED episode (where you left off),
+    plus aired/watched/unwatched counts. Powers the real Continue Watching row."""
+    if not SONARR_URL or not SONARR_KEY:
+        raise HTTPException(503, "Sonarr not configured")
+    d = load_data()
+    watched_store = d.get("watched", {})
+    now = datetime.now(timezone.utc)
+    async with httpx.AsyncClient() as client:
+        sr = await client.get(f"{SONARR_URL}/api/v3/series",
+                              headers={"X-Api-Key": SONARR_KEY}, timeout=20)
+        if sr.status_code != 200:
+            raise HTTPException(502, f"Sonarr returned {sr.status_code}")
+        series = sr.json()
+
+        async def for_show(s):
+            sid = str(s["id"])
+            try:
+                er = await client.get(f"{SONARR_URL}/api/v3/episode",
+                                      headers={"X-Api-Key": SONARR_KEY},
+                                      params={"seriesId": s["id"]}, timeout=20)
+                eps = er.json() if er.status_code == 200 else []
+            except Exception:
+                eps = []
+            watched_ids = set(watched_store.get(sid, []))
+            aired = []
+            for e in eps:
+                if e.get("seasonNumber", 0) == 0:
+                    continue
+                when = _parse_air(e.get("airDateUtc"))
+                if when and when <= now:
+                    aired.append((e.get("seasonNumber", 0), e.get("episodeNumber", 0), e))
+            aired.sort(key=lambda x: (x[0], x[1]))
+            watched_count = sum(1 for _, _, e in aired if e["id"] in watched_ids)
+            next_ep = None
+            for sn, en, e in aired:
+                if e["id"] not in watched_ids:
+                    next_ep = {
+                        "id": e["id"], "season": sn, "episode": en,
+                        "title": e.get("title"), "airDateUtc": e.get("airDateUtc"),
+                        "hasFile": e.get("hasFile", False),
+                    }
+                    break
+            return sid, {
+                "next": next_ep,
+                "aired": len(aired),
+                "watched": watched_count,
+                "unwatched": len(aired) - watched_count,
+                "started": watched_count > 0,
+            }
+
+        results = await asyncio.gather(*[for_show(s) for s in series])
+    return {sid: info for sid, info in results}
+
 # ── Watched ───────────────────────────────────────────────────────────────
 @app.post("/api/shows/{show_id}/watched/{ep_id}")
 async def mark_watched(show_id: int, ep_id: int):
@@ -227,6 +301,23 @@ async def mark_watched(show_id: int, ep_id: int):
     if ep_id not in d["watched"][sid]: d["watched"][sid].append(ep_id)
     save_data(d)
     return {"ok": True}
+
+@app.post("/api/shows/{show_id}/watched-bulk")
+async def mark_watched_bulk(show_id: int, request: Request):
+    """Mark/unmark many episodes at once. Body: {"ep_ids": [...], "watched": true|false}."""
+    body = await request.json()
+    ep_ids = [int(x) for x in body.get("ep_ids", [])]
+    mark = body.get("watched", True)
+    d = load_data()
+    sid = str(show_id)
+    cur = set(d["watched"].get(sid, []))
+    if mark:
+        cur.update(ep_ids)
+    else:
+        cur.difference_update(ep_ids)
+    d["watched"][sid] = sorted(cur)
+    save_data(d)
+    return {"ok": True, "count": len(d["watched"][sid])}
 
 @app.delete("/api/shows/{show_id}/watched/{ep_id}")
 async def mark_unwatched(show_id: int, ep_id: int):

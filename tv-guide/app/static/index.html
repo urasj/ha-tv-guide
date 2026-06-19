@@ -770,11 +770,12 @@ var SVC_COLORS = {
 };
 
 // ── State ──────────────────────────────────────────────────────────────────
-var appData = { shows:[], watched:{}, services:{}, deep_links:{}, profiles:{} };
+var appData = { shows:[], watched:{}, services:{}, deep_links:{}, profiles:{}, nextup:{} };
 var allShows = [];
 var currentShowId = null;
 var currentSeason = null;
 var _profCb = null;
+var _progressDirty = false;
 
 // ── API helpers ────────────────────────────────────────────────────────────
 async function api(method, path, body) {
@@ -803,9 +804,11 @@ async function loadShows() {
   var refreshBtn2 = document.getElementById('btn-refresh');
   if (refreshBtn2) refreshBtn2.textContent = '⟳';
   try {
-    const [status, shows] = await Promise.all([
+    const [status, shows, data, nextup] = await Promise.all([
       get('api/status'),
-      get('api/shows')
+      get('api/shows'),
+      get('api/data').catch(()=>({watched:{}})),
+      get('api/nextup').catch(()=>({}))
     ]);
     // status.services is the SVCS labels dict - store separately
     var SVCS_LABELS = status.services || {};
@@ -821,6 +824,8 @@ async function loadShows() {
     // Restore per-show data (status.services overwrites with labels dict)
     appData.services = showServices;
     appData.deep_links = showDeepLinks;
+    appData.watched = (data && data.watched) ? data.watched : {};
+    appData.nextup = nextup || {};
     allShows = shows;
     render();
   initDragScroll();
@@ -846,10 +851,25 @@ function getFanart(show) {
 function getSvc(sid) {
   return appData.services?.[String(sid)] || null;
 }
-function getUnwatched(show) {
-  const watched = appData.watched?.[show.id] || [];
-  const eps = show.episodes || [];
-  return eps.filter(e => e.airDateUtc && new Date(e.airDateUtc) <= new Date() && !watched.includes(e.id));
+function nu(show)        { return appData.nextup?.[String(show.id)] || null; }
+function getNextUp(show) { return nu(show)?.next || null; }
+function unwatchedCount(show) { return nu(show)?.unwatched || 0; }
+function isStarted(show) { return !!nu(show)?.started; }
+function epLabel(ep)     { return ep ? `S${ep.season}·E${ep.episode}` : ''; }
+
+// Recompute next-up locally from already-loaded episodes (avoids a server round-trip on each tick).
+function recomputeNextUp(show) {
+  const now = new Date();
+  const eps = (show.episodes || [])
+    .filter(e => e.seasonNumber > 0 && e.airDateUtc && new Date(e.airDateUtc) <= now)
+    .sort((a,b) => a.seasonNumber - b.seasonNumber || a.episodeNumber - b.episodeNumber);
+  const watched = new Set(appData.watched?.[show.id] || []);
+  let next = null, wc = 0;
+  for (const e of eps) {
+    if (watched.has(e.id)) { wc++; }
+    else if (!next) { next = { id:e.id, season:e.seasonNumber, episode:e.episodeNumber, title:e.title, airDateUtc:e.airDateUtc, hasFile:e.hasFile }; }
+  }
+  appData.nextup[String(show.id)] = { next, aired: eps.length, watched: wc, unwatched: eps.length - wc, started: wc > 0 };
 }
 
 function render() {
@@ -866,23 +886,23 @@ function render() {
     return;
   }
 
-  // Split into groups
-  const withService = allShows.filter(s => getSvc(s.id));
-  const noService = allShows.filter(s => !getSvc(s.id));
-  const continuing = allShows.filter(s => s.status === 'continuing');
-  const ended = allShows.filter(s => s.status === 'ended');
+  // Real Continue Watching = you've started it AND a next aired episode is waiting.
+  const cont = allShows
+    .filter(s => { const n = nu(s); return n && n.next && n.started; })
+    .sort((a,b) => new Date(getNextUp(b)?.airDateUtc||0) - new Date(getNextUp(a)?.airDateUtc||0));
+  // Ready to Start = aired episodes waiting, but you haven't begun.
+  const fresh = allShows.filter(s => { const n = nu(s); return n && n.next && !n.started; });
 
-  // Hero: pick first continuing show with fanart
-  const heroShow = continuing.find(s=>getFanart(s)) || allShows.find(s=>getFanart(s)) || allShows[0];
+  // Hero: first continue-watching show with fanart, else anything with art.
+  const heroShow = cont.find(s=>getFanart(s)) || allShows.find(s=>getFanart(s)) || allShows[0];
   if (heroShow) renderHero(heroShow);
 
   main.innerHTML = '';
 
-  // Sections
   const sections = [
-    { title: 'Continue Watching', shows: continuing },
+    { title: 'Continue Watching', shows: cont },
+    { title: 'Ready to Start', shows: fresh },
     { title: 'All Shows', shows: allShows },
-    { title: 'Ended', shows: ended },
   ].filter(s => s.shows.length > 0);
 
   // Dedupe: only show each show in first matching section
@@ -902,19 +922,24 @@ function renderHero(show) {
   document.getElementById('hero-title').textContent = show.title;
   document.getElementById('hero-overview').textContent = show.overview || '';
   
-  const unwatched = getUnwatched(show);
+  const count = unwatchedCount(show);
+  const next = getNextUp(show);
   const meta = document.getElementById('hero-meta');
   meta.innerHTML = `
     <span>${show.network || ''}</span>
     ${show.year ? `<span>· ${show.year}</span>` : ''}
     ${show.status ? `<span>· ${show.status}</span>` : ''}
-    ${unwatched.length ? `<span style="color:var(--accent2)">· ${unwatched.length} unwatched</span>` : ''}
+    ${count ? `<span style="color:var(--accent2)">· ${count} to watch</span>` : ''}
+    ${next ? `<span style="color:var(--accent2)">· Next ${epLabel(next)}</span>` : ''}
   `;
 
   const actions = document.getElementById('hero-actions');
   actions.innerHTML = `
-    <button class="btn btn-primary" onclick="openModal(${show.id})">▶ View Episodes</button>
-    ${svc ? `<button class="btn btn-ghost" onclick="launchShow(${show.id},'${svc}')">📺 Watch on ${SVCS[svc]||svc}</button>` : ''}
+    ${(svc && next)
+      ? `<button class="btn btn-primary" onclick="resumeShow(${show.id})">▶ Resume ${epLabel(next)}</button>`
+      : `<button class="btn btn-primary" onclick="openModal(${show.id})">▶ View Episodes</button>`}
+    ${svc ? `<button class="btn btn-ghost" onclick="launchShow(${show.id},'${svc}')">📺 ${SVCS[svc]||svc}</button>` : ''}
+    <button class="btn btn-ghost" onclick="openModal(${show.id})">Episodes</button>
   `;
 }
 
@@ -940,7 +965,8 @@ function buildCard(show) {
 
   const poster = getPoster(show);
   const svc = getSvc(show.id);
-  const unwatched = getUnwatched(show);
+  const count = unwatchedCount(show);
+  const next = getNextUp(show);
   const svcColor = svc ? (SVC_COLORS[svc] || '#fff') : null;
 
   if (poster) {
@@ -952,8 +978,8 @@ function buildCard(show) {
     </div>`;
   }
 
-  if (unwatched.length > 0) {
-    card.innerHTML += `<div class="card-unwatched-badge">${unwatched.length > 9 ? '9+' : unwatched.length}</div>`;
+  if (count > 0) {
+    card.innerHTML += `<div class="card-unwatched-badge">${count > 9 ? '9+' : count}</div>`;
   }
 
   card.innerHTML += `<div class="show-card-overlay">
@@ -962,7 +988,8 @@ function buildCard(show) {
       ${show.network ? `<span>${show.network}</span>` : ''}
       ${svc ? `<span class="card-svc" style="color:${svcColor}">${SVCS[svc]||svc}</span>` : ''}
     </div>
-    ${show.nextAiring ? `<div class="card-next-ep">Next: ${new Date(show.nextAiring).toLocaleDateString()}</div>` : ''}
+    ${next ? `<div class="card-next-ep">▶ Next: ${epLabel(next)}${next.title ? ' · ' + next.title : ''}</div>`
+           : (show.nextAiring ? `<div class="card-next-ep">Airs ${new Date(show.nextAiring).toLocaleDateString()}</div>` : '')}
   </div>`;
 
   return card;
@@ -995,11 +1022,16 @@ async function openModal(showId) {
   ].filter(Boolean).map(m=>`<span>${m}</span>`).join('');
 
   // Actions
+  const next = getNextUp(show);
   const actions = document.getElementById('modal-actions');
-  actions.innerHTML = svc
-    ? `<button class="btn btn-primary" onclick="launchShow(${showId},'${svc}')">▶ Watch on ${SVCS[svc]||svc}</button>
-       <button class="btn btn-ghost" onclick="scanShow(${showId})">🔍 Scan</button>`
-    : `<button class="btn btn-ghost" onclick="scanShow(${showId})">🔍 Find Streaming Service</button>`;
+  if (svc) {
+    actions.innerHTML =
+      (next ? `<button class="btn btn-primary" onclick="resumeShow(${showId})">▶ Resume ${epLabel(next)}</button>` : '')
+      + `<button class="btn btn-ghost" onclick="launchShow(${showId},'${svc}')">📺 Open ${SVCS[svc]||svc}</button>`
+      + `<button class="btn btn-ghost" onclick="scanShow(${showId})">🔍 Scan</button>`;
+  } else {
+    actions.innerHTML = `<button class="btn btn-ghost" onclick="scanShow(${showId})">🔍 Find Streaming Service</button>`;
+  }
 
   // Service override
   renderServiceButtons(showId);
@@ -1089,6 +1121,7 @@ function closeModal() {
   document.body.style.overflow = '';
   currentShowId = null;
   currentSeason = null;
+  if (_progressDirty) { _progressDirty = false; render(); initDragScroll(); }
 }
 
 function maybeCloseModal(e) {
@@ -1143,6 +1176,18 @@ async function toggleWatched(sid, epId, isWatched) {
     const btn = row.querySelector('.ep-tick');
     if (btn) { btn.textContent='✓'; btn.classList.toggle('on', !isWatched); }
   }
+  // Keep Continue Watching / next-up in sync with the tick.
+  const showObj = allShows.find(s => s.id === sid);
+  if (showObj) recomputeNextUp(showObj);
+  _progressDirty = true;
+}
+
+// ── Resume (Continue Watching) ───────────────────────────────────────────────
+function resumeShow(showId) {
+  const svc = getSvc(showId);
+  if (!svc) { openModal(showId); toast('Pick a streaming service first', 'error'); return; }
+  // Deep-links to the show page; the app's own "Continue Watching" resumes your spot.
+  launchShow(showId, svc);
 }
 
 // ── Launch ─────────────────────────────────────────────────────────────────

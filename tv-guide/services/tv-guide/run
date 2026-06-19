@@ -1,11 +1,7 @@
 #!/usr/bin/with-contenv bashio
 
-# ── Pull latest code from GitHub ──────────────────────────────────────────
-bashio::log.info "Pulling latest from GitHub..."
-cd /repo && git pull origin main 2>&1 | while read line; do bashio::log.info "  git: $line"; done
-cp -f /repo/tv-guide/app/static/index.html /app/static/index.html
-cp -f /repo/tv-guide/app/main.py /app/main.py
-bashio::log.info "Code updated"
+# The app code is baked into the image at build time (see Dockerfile). Updating
+# the add-on rebuilds the image from the repo, so code and version move together.
 
 # ── Read config and export env vars ───────────────────────────────────────
 export SONARR_URL="$(bashio::config 'sonarr_url')"

@@ -82,7 +82,7 @@ LAUNCH_TIMING = {
 # default to accessibility tap-by-name via the helper.
 PROFILE_NAV = {
     "netflix": {"method": "blind", "slam_key": 19, "slam_count": 8, "step_key": 20,
-                "select_key": 23, "gap": 0.5, "settle": 1.6, "pre": 12, "post": 8},
+                "select_key": 23, "gap": 0.5, "settle": 3.0, "pre": 12, "post": 8},
 }
 
 # ── Persistence ───────────────────────────────────────────────────────────

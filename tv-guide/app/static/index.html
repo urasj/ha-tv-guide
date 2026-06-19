@@ -155,6 +155,27 @@
     nav{padding:14px 16px 6px;gap:10px}.seg{display:none}main{padding:8px 16px 0}.filters{padding:6px 16px}
     .cw{grid-auto-columns:282px}.pad{display:none}.dlbl{display:none}
   }
+  /* ADD SHOW */
+  .add-backdrop{position:fixed;inset:0;z-index:240;background:rgba(0,0,0,.8);display:flex;align-items:flex-start;justify-content:center;padding:48px 18px;overflow-y:auto;opacity:0;pointer-events:none;transition:opacity .2s}
+  .add-backdrop.open{opacity:1;pointer-events:all}
+  .add-panel{background:var(--panel);border:1px solid var(--line);border-radius:18px;width:100%;max-width:640px;overflow:hidden}
+  .add-head{display:flex;align-items:center;gap:12px;padding:18px 20px;border-bottom:1px solid var(--line)}
+  .add-head h2{font-family:'Space Grotesk';font-size:20px;font-weight:600;flex:1}
+  .add-search{margin:16px 20px 8px}
+  .add-search input{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:12px 14px;color:var(--text);font-family:'Inter';font-size:15px;outline:none}
+  .add-search input:focus{border-color:var(--teal)}
+  .add-results{padding:8px 12px 20px;max-height:60vh;overflow-y:auto}
+  .ares{display:flex;gap:12px;padding:10px;border-radius:12px;align-items:center}
+  .ares:hover{background:var(--panel2)}
+  .ares img{width:46px;height:69px;border-radius:7px;object-fit:cover;background:var(--panel2);flex-shrink:0}
+  .ares .ai{flex:1;min-width:0}
+  .ares .at{font-size:15px;font-weight:600}
+  .ares .am{font-size:12px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ares .ao{font-size:12px;color:var(--muted);margin-top:5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .add-btn{padding:9px 15px;border-radius:10px;background:var(--teal);color:#062b26;border:none;font-family:'Inter';font-size:13px;font-weight:600;cursor:pointer;flex-shrink:0}
+  .add-btn:disabled{opacity:.55;cursor:default}
+  .in-lib{font-size:12px;color:var(--teal);flex-shrink:0;padding:8px 12px;font-weight:600}
+  .add-hint{color:var(--muted);font-size:13px;text-align:center;padding:26px}
 </style>
 </head>
 <body>
@@ -166,6 +187,7 @@
   </div>
   <div class="spacer"></div>
   <button class="ico" id="btn-scan-all" title="Scan services" onclick="scanAll()">⌕</button>
+  <button class="ico" id="btn-add" title="Add a show" onclick="openAdd()" style="background:var(--teal);color:#062b26;width:auto;padding:0 14px;font-weight:700;font-family:'Inter'">＋ Add</button>
   <button class="ico" id="btn-refresh" title="Refresh" onclick="loadShows()">↻</button>
 </nav>
 
@@ -229,6 +251,14 @@
 
 <div class="scan-modal" id="scan-toast"><span class="spin">⟳</span><span id="scan-msg">Scanning…</span></div>
 <div id="toast-container"></div>
+
+<div class="add-backdrop" id="add-modal" onclick="maybeCloseAdd(event)">
+  <div class="add-panel">
+    <div class="add-head"><h2>Add a show</h2><button class="modal-close" style="position:static" onclick="closeAdd()">✕</button></div>
+    <div class="add-search"><input id="add-input" type="text" placeholder="Search for a show to track…" autocomplete="off"></div>
+    <div class="add-results" id="add-results"><div class="add-hint">Type a show name to search.</div></div>
+  </div>
+</div>
 
 <script>
 var COL={netflix:'#e50914',hulu:'#1ce783',disney:'#4a7bff',max:'#4d7cff',peacock:'#f7b500',discovery:'#3b9bff',prime:'#19b3e6',paramount:'#1f6bff',apple:'#d8d8d8',plex:'#e5a00d',tubi:'#fa3c00',pluto:'#ffd400',youtube:'#ff3a30'};
@@ -496,6 +526,34 @@ function initDragScroll(){
     row.addEventListener('mouseleave',()=>down=false); row.addEventListener('mouseup',()=>down=false);
     row.addEventListener('mousemove',e=>{ if(!down) return; e.preventDefault(); row.scrollLeft=sl-((e.pageX-row.offsetLeft)-sx)*1.5; });
   });
+}
+var _addTimer=null;
+function openAdd(){ document.getElementById('add-modal').classList.add('open'); document.body.style.overflow='hidden'; const i=document.getElementById('add-input'); i.value=''; document.getElementById('add-results').innerHTML='<div class="add-hint">Type a show name to search.</div>'; setTimeout(()=>i.focus(),60); }
+function closeAdd(){ document.getElementById('add-modal').classList.remove('open'); document.body.style.overflow=''; }
+function maybeCloseAdd(e){ if(e.target===document.getElementById('add-modal')) closeAdd(); }
+document.addEventListener('input',e=>{ if(e.target&&e.target.id==='add-input'){ clearTimeout(_addTimer); const term=e.target.value.trim(); if(term.length<2){ document.getElementById('add-results').innerHTML='<div class="add-hint">Type at least 2 characters.</div>'; return; } _addTimer=setTimeout(()=>doAddSearch(term),350); } });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeAdd(); });
+async function doAddSearch(term){
+  const box=document.getElementById('add-results'); box.innerHTML='<div class="add-hint">Searching…</div>';
+  try{
+    const res=await get('api/search?term='+encodeURIComponent(term));
+    if(!res.length){ box.innerHTML='<div class="add-hint">No matches found.</div>'; return; }
+    box.innerHTML=res.map(r=>`<div class="ares">
+      <img src="${r.poster||''}" alt="" onerror="this.style.visibility='hidden'">
+      <div class="ai"><div class="at">${r.title} ${r.year?`<span style="color:var(--muted);font-weight:400">(${r.year})</span>`:''}</div>
+      <div class="am">${[r.network,r.status].filter(Boolean).join(' · ')}</div>
+      <div class="ao">${r.overview||''}</div></div>
+      ${r.added?`<span class="in-lib">✓ In library</span>`:`<button class="add-btn" onclick="addShow(${r.tvdbId},this)">＋ Add</button>`}
+    </div>`).join('');
+  }catch(e){ box.innerHTML='<div class="add-hint">Search failed: '+e.message+'</div>'; }
+}
+async function addShow(tvdbId,btn){
+  btn.disabled=true; btn.textContent='Adding…';
+  try{
+    const r=await post('api/add',{tvdbId:tvdbId,monitor:'all',search:false});
+    btn.textContent='✓ Added'; toast('Added '+(r.title||'show')+' to your library');
+    loadShows();
+  }catch(e){ btn.disabled=false; btn.textContent='＋ Add'; toast('Add failed: '+e.message,'error'); }
 }
 if(!window.__tvg){ window.__tvg=true; loadShows(); sonosLoadState(); }
 </script>

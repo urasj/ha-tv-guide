@@ -498,6 +498,98 @@ async def scan_all(request: Request):
     save_data(d)
     return {"results": results, "auto_updated": len(auto_results), "scanned": len(shows), "found": len(results)}
 
+# ── Add to library (Sonarr) ──────────────────────────────────────────────────
+@app.get("/api/search")
+async def search_series(term: str):
+    if not SONARR_URL or not SONARR_KEY:
+        raise HTTPException(503, "Sonarr not configured")
+    if not term.strip():
+        return []
+    async with httpx.AsyncClient() as client:
+        r = await client.get(f"{SONARR_URL}/api/v3/series/lookup",
+                             headers={"X-Api-Key": SONARR_KEY}, params={"term": term}, timeout=20)
+        if r.status_code != 200:
+            raise HTTPException(502, f"Sonarr lookup returned {r.status_code}")
+        out = []
+        for s in r.json()[:20]:
+            imgs = s.get("images", [])
+            poster = next((i.get("remoteUrl") or i.get("url") for i in imgs if i.get("coverType") == "poster"), None)
+            out.append({
+                "tvdbId": s.get("tvdbId"),
+                "title": s.get("title"),
+                "year": s.get("year"),
+                "overview": s.get("overview", ""),
+                "network": s.get("network"),
+                "status": s.get("status"),
+                "poster": poster,
+                "added": bool(s.get("id")),
+            })
+        return out
+
+async def _sonarr_defaults(client):
+    qp = await client.get(f"{SONARR_URL}/api/v3/qualityprofile", headers={"X-Api-Key": SONARR_KEY}, timeout=15)
+    rf = await client.get(f"{SONARR_URL}/api/v3/rootfolder", headers={"X-Api-Key": SONARR_KEY}, timeout=15)
+    profiles = qp.json() if qp.status_code == 200 else []
+    folders = rf.json() if rf.status_code == 200 else []
+    lang = []
+    try:
+        lr = await client.get(f"{SONARR_URL}/api/v3/languageprofile", headers={"X-Api-Key": SONARR_KEY}, timeout=15)
+        if lr.status_code == 200:
+            lang = lr.json()
+    except Exception:
+        pass
+    return profiles, folders, lang
+
+@app.get("/api/sonarr/meta")
+async def sonarr_meta():
+    if not SONARR_URL or not SONARR_KEY:
+        raise HTTPException(503, "Sonarr not configured")
+    async with httpx.AsyncClient() as client:
+        profiles, folders, lang = await _sonarr_defaults(client)
+    return {
+        "qualityProfiles": [{"id": p["id"], "name": p["name"]} for p in profiles],
+        "rootFolders": [{"path": f["path"], "freeSpace": f.get("freeSpace")} for f in folders],
+        "hasLanguageProfile": bool(lang),
+    }
+
+@app.post("/api/add")
+async def add_series(request: Request):
+    if not SONARR_URL or not SONARR_KEY:
+        raise HTTPException(503, "Sonarr not configured")
+    body = await request.json()
+    tvdb = body.get("tvdbId")
+    if not tvdb:
+        raise HTTPException(400, "tvdbId required")
+    monitor = body.get("monitor", "all")
+    do_search = bool(body.get("search", False))
+    async with httpx.AsyncClient() as client:
+        lr = await client.get(f"{SONARR_URL}/api/v3/series/lookup",
+                              headers={"X-Api-Key": SONARR_KEY}, params={"term": f"tvdb:{tvdb}"}, timeout=20)
+        if lr.status_code != 200 or not lr.json():
+            raise HTTPException(502, "Sonarr lookup failed")
+        series = lr.json()[0]
+        if series.get("id"):
+            raise HTTPException(409, "Already in library")
+        profiles, folders, lang = await _sonarr_defaults(client)
+        if not profiles or not folders:
+            raise HTTPException(500, "Sonarr has no quality profile or root folder configured")
+        series.update({
+            "qualityProfileId": body.get("qualityProfileId") or profiles[0]["id"],
+            "rootFolderPath": body.get("rootFolderPath") or folders[0]["path"],
+            "monitored": monitor != "none",
+            "seasonFolder": True,
+            "addOptions": {"monitor": monitor, "searchForMissingEpisodes": do_search, "searchForCutoffUnmetEpisodes": False},
+        })
+        if lang:
+            series["languageProfileId"] = lang[0]["id"]
+        ar = await client.post(f"{SONARR_URL}/api/v3/series",
+                               headers={"X-Api-Key": SONARR_KEY, "Content-Type": "application/json"},
+                               json=series, timeout=30)
+        if ar.status_code not in (200, 201):
+            raise HTTPException(502, f"Sonarr add failed ({ar.status_code}): {ar.text[:300]}")
+        added = ar.json()
+    return {"ok": True, "id": added.get("id"), "title": added.get("title")}
+
 # ── Fire TV launch ────────────────────────────────────────────────────────
 async def get_resumed_activity(client) -> str:
     try:

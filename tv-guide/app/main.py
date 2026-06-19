@@ -750,6 +750,38 @@ async def firetv_play(request: Request):
     asyncio.create_task(_do_play(svc, pkg, profiles, profile_index, nav, deep_link))
     return {"ok": True, "started": True, "service": svc, "profile_index": profile_index, "deep_link": deep_link}
 
+# ── Capture deep-link (read what the Fire TV's Play button fired) ─────────────
+@app.get("/api/firetv/capture")
+async def firetv_capture():
+    """Best-effort: pull the most recent streaming deep-link the Fire TV launched
+    (e.g. the URL behind the universal-search Play button). Call right after pressing
+    Play on the Fire TV; returns any netflix/disney/max/etc play URLs seen in logcat."""
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await ha_adb(
+                client,
+                "logcat -d -t 600 2>/dev/null | grep -oE 'https?://[^ \"]+' | "
+                "grep -iE 'netflix|disneyplus|play.max|primevideo|peacocktv|hulu|paramountplus|discoveryplus' | tail -8",
+                timeout=30,
+            )
+        except Exception as e:
+            raise HTTPException(502, f"capture failed: {e}")
+    resp = ""
+    try:
+        data = r.json()
+        if isinstance(data, list) and data:
+            resp = data[0].get("attributes", {}).get("adb_response", "") or ""
+        elif isinstance(data, dict):
+            resp = data.get("attributes", {}).get("adb_response", "") or ""
+    except Exception:
+        pass
+    links = []
+    for line in resp.splitlines():
+        line = line.strip()
+        if line and line.startswith("http") and line not in links:
+            links.append(line)
+    return {"ok": True, "links": links, "latest": links[-1] if links else None}
+
 # ── Archive / remove / restore ───────────────────────────────────────────────
 async def _sonarr_add(client, tvdb, monitor="all", search=False):
     lr = await client.get(f"{SONARR_URL}/api/v3/series/lookup",

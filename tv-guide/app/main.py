@@ -19,6 +19,7 @@ HA_TOKEN    = os.environ.get("HA_TOKEN", "")
 FIRETV_ENT  = os.environ.get("FIRETV_ENTITY", "media_player.fire_tv_192_168_7_211")
 SONOS_ENT   = os.environ.get("SONOS_ENTITY", "media_player.living_room")
 LG_ENT      = os.environ.get("LG_ENTITY", "media_player.lg_webos_tv_oled65c3aua_2")
+HELPER_URL  = os.environ.get("HELPER_URL", "http://192.168.7.211:8472").rstrip("/")
 INGRESS_PATH = os.environ.get("INGRESS_PATH", "").rstrip("/")
 TMDB_BASE   = "https://api.themoviedb.org/3"
 
@@ -632,6 +633,28 @@ async def add_series(request: Request):
             except Exception:
                 pass
     return {"ok": True, "id": new_id, "title": added.get("title"), "service": service, "deep_link": deep_link}
+
+# ── Helper app proxy (Fire Stick companion) ──────────────────────────────────
+@app.api_route("/api/helper/{path:path}", methods=["GET", "POST"])
+async def helper_proxy(path: str, request: Request):
+    body = {}
+    if request.method == "POST":
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+    async with httpx.AsyncClient() as client:
+        try:
+            if request.method == "POST":
+                r = await client.post(f"{HELPER_URL}/{path}", json=body, timeout=20)
+            else:
+                r = await client.get(f"{HELPER_URL}/{path}", timeout=20)
+        except Exception as e:
+            raise HTTPException(502, f"Helper not reachable at {HELPER_URL}: {e}")
+    try:
+        return JSONResponse(r.json(), status_code=r.status_code)
+    except Exception:
+        return JSONResponse({"raw": r.text[:2000]}, status_code=r.status_code)
 
 # ── Archive / remove / restore ───────────────────────────────────────────────
 async def _sonarr_add(client, tvdb, monitor="all", search=False):

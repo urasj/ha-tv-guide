@@ -1058,10 +1058,10 @@ async def sonos_command(request: Request):
     cmd = body.get("command")
     async with httpx.AsyncClient() as client:
         if cmd == "volume_up":
-            vol = round(min(1.0, float(body.get("current", 0.3))), 2)
+            vol = round(min(1.0, float(body.get("current", 0.3)) + 0.05), 2)
             await ha_call(client, "media_player", "volume_set", {"entity_id": SONOS_ENT, "volume_level": vol})
         elif cmd == "volume_down":
-            vol = round(max(0.0, float(body.get("current", 0.3))), 2)
+            vol = round(max(0.0, float(body.get("current", 0.3)) - 0.05), 2)
             await ha_call(client, "media_player", "volume_set", {"entity_id": SONOS_ENT, "volume_level": vol})
         elif cmd == "mute":
             # body.muted is current state, we want to toggle so pass NOT current

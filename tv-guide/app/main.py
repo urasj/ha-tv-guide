@@ -102,16 +102,17 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 app.mount("/static", StaticFiles(directory="/app/static"), name="static")
 
 # ── HA helpers ────────────────────────────────────────────────────────────
-async def ha_call(client, domain, service, data):
+async def ha_call(client, domain, service, data, timeout=10):
     r = await client.post(
         f"{HA_URL}/api/services/{domain}/{service}",
         headers={"Authorization": f"Bearer {HA_TOKEN}", "Content-Type": "application/json"},
-        json=data, timeout=10
+        json=data, timeout=timeout
     )
     return r
 
-async def ha_adb(client, command):
-    return await ha_call(client, "androidtv", "adb_command", {"entity_id": FIRETV_ENT, "command": command})
+async def ha_adb(client, command, timeout=45):
+    return await ha_call(client, "androidtv", "adb_command",
+                         {"entity_id": FIRETV_ENT, "command": command}, timeout=timeout)
 
 # ── Routes ────────────────────────────────────────────────────────────────
 @app.get("/")
@@ -665,6 +666,56 @@ async def helper_proxy(path: str, request: Request):
         return JSONResponse({"raw": r.text[:2000]}, status_code=r.status_code)
 
 # ── Play: reliable launch + profile select + deep-link (via helper) ──────────
+async def _do_play(svc, pkg, profiles, profile_index, nav, deep_link):
+    """Runs in the background so the HTTP request returns instantly."""
+    async with httpx.AsyncClient() as client:
+        # 1) Reliable native launch via the helper (fall back to ADB).
+        used_helper = True
+        try:
+            r = await client.post(f"{HELPER_URL}/launch", json={"package": pkg}, timeout=15)
+            used_helper = (r.status_code == 200)
+        except Exception:
+            used_helper = False
+        if not used_helper:
+            try:
+                await ha_call(client, "media_player", "turn_on", {"entity_id": FIRETV_ENT})
+                await asyncio.sleep(2)
+                await ha_adb(client, f"monkey -p {pkg} 1")
+            except Exception:
+                pass
+
+        # 2) Profile selection.
+        if profile_index is not None and profile_index >= 0 and len(profiles) > 1:
+            if nav and nav.get("method") == "blind":
+                await asyncio.sleep(nav.get("pre", 6))
+                gap = nav.get("gap", 0.45)
+                seq = ("input keyevent %d; sleep %s; " % (nav["slam_key"], gap)) * nav["slam_count"]
+                seq += ("input keyevent %d; sleep %s; " % (nav["step_key"], gap)) * int(profile_index)
+                seq += "input keyevent %d" % nav["select_key"]
+                try:
+                    await ha_adb(client, seq)
+                except Exception:
+                    pass
+                await asyncio.sleep(nav.get("post", 8))
+            else:
+                name = profiles[profile_index] if profile_index < len(profiles) else ""
+                await asyncio.sleep(5)
+                try:
+                    await client.post(f"{HELPER_URL}/selectprofile", json={"name": name}, timeout=15)
+                except Exception:
+                    pass
+                await asyncio.sleep(4)
+
+        # 3) Deep-link into the title.
+        if deep_link:
+            try:
+                await client.post(f"{HELPER_URL}/deeplink", json={"package": pkg, "url": deep_link}, timeout=15)
+            except Exception:
+                try:
+                    await ha_adb(client, f'am start -a android.intent.action.VIEW -d "{deep_link}" {pkg}')
+                except Exception:
+                    pass
+
 @app.post("/api/firetv/play")
 async def firetv_play(request: Request):
     body = await request.json()
@@ -679,51 +730,10 @@ async def firetv_play(request: Request):
     profiles = APP_PROFILES.get(svc, [])
     if (profile_index is None) and profile_name and profile_name in profiles:
         profile_index = profiles.index(profile_name)
-    deep_link = None
-    if show_id:
-        deep_link = load_data().get("deep_links", {}).get(str(show_id))
+    deep_link = load_data().get("deep_links", {}).get(str(show_id)) if show_id else None
     nav = PROFILE_NAV.get(svc)
-    used_helper = True
-
-    async with httpx.AsyncClient() as client:
-        # 1) Reliable native launch via the helper (fall back to ADB).
-        try:
-            r = await client.post(f"{HELPER_URL}/launch", json={"package": pkg}, timeout=15)
-            used_helper = (r.status_code == 200)
-        except Exception:
-            used_helper = False
-        if not used_helper:
-            await ha_call(client, "media_player", "turn_on", {"entity_id": FIRETV_ENT})
-            await asyncio.sleep(2)
-            await ha_adb(client, f"monkey -p {pkg} 1")
-
-        # 2) Profile selection.
-        if profile_index is not None and profile_index >= 0 and len(profiles) > 1:
-            if nav and nav.get("method") == "blind":
-                await asyncio.sleep(nav.get("pre", 6))
-                gap = nav.get("gap", 0.45)
-                seq = ("input keyevent %d; sleep %s; " % (nav["slam_key"], gap)) * nav["slam_count"]
-                seq += ("input keyevent %d; sleep %s; " % (nav["step_key"], gap)) * int(profile_index)
-                seq += "input keyevent %d" % nav["select_key"]
-                await ha_adb(client, seq)
-                await asyncio.sleep(nav.get("post", 8))
-            else:
-                name = profiles[profile_index] if profile_index < len(profiles) else (profile_name or "")
-                await asyncio.sleep(5)
-                try:
-                    await client.post(f"{HELPER_URL}/selectprofile", json={"name": name}, timeout=15)
-                except Exception:
-                    pass
-                await asyncio.sleep(4)
-
-        # 3) Deep-link into the title.
-        if deep_link:
-            try:
-                await client.post(f"{HELPER_URL}/deeplink", json={"package": pkg, "url": deep_link}, timeout=15)
-            except Exception:
-                await ha_adb(client, f'am start -a android.intent.action.VIEW -d "{deep_link}" {pkg}')
-
-    return {"ok": True, "service": svc, "profile_index": profile_index, "helper": used_helper, "deep_link": deep_link}
+    asyncio.create_task(_do_play(svc, pkg, profiles, profile_index, nav, deep_link))
+    return {"ok": True, "started": True, "service": svc, "profile_index": profile_index, "deep_link": deep_link}
 
 # ── Archive / remove / restore ───────────────────────────────────────────────
 async def _sonarr_add(client, tvdb, monitor="all", search=False):

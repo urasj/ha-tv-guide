@@ -1163,10 +1163,13 @@ async def power(request: Request):
             # turn_on is unreliable, so WoL to the panel's MAC is the on-switch.
             await _try(ha_call(client, "wake_on_lan", "send_magic_packet",
                                {"mac": LG_MAC, "broadcast_address": LG_BROADCAST}))
-            # Wake the Fire Stick so its HDMI input is live when the panel lights up.
-            await _try(ha_adb(client, "input keyevent 224"))
-            # Sonos on.
-            await _try(ha_call(client, "media_player", "turn_on", {"entity_id": SONOS_ENT}))
+            # Wake the Fire Stick (so its HDMI input is live) and auto-select
+            # Justin's profile (Android user 0, the primary) so the Fire TV
+            # profile picker doesn't sit waiting. `am switch-user` selects the
+            # user whether or not the picker is on screen.
+            await _try(ha_adb(client, "input keyevent 224; sleep 4; am switch-user 0", timeout=20))
+            # Sonos is the TV soundbar -> it auto-routes TV audio when the panel
+            # comes on; don't force-play (would blast a stale music queue).
         else:
             # Turn the TV off via the Fire Stick's HDMI-CEC (keyevent 177 =
             # KEYCODE_TV_POWER -> CEC standby), exactly like the remote. webOS
@@ -1174,7 +1177,7 @@ async def power(request: Request):
             await _try(ha_adb(client, "input keyevent 177"))
             await _try(ha_call(client, "media_player", "turn_off", {"entity_id": LG_ENT}))
             # Sonos off.
-            await _try(ha_call(client, "media_player", "turn_off", {"entity_id": SONOS_ENT}))
+            await _try(ha_call(client, "media_player", "media_pause", {"entity_id": SONOS_ENT}))
     return {"ok": True, "action": action}
 
 # ── Sonos ─────────────────────────────────────────────────────────────────

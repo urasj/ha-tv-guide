@@ -19,6 +19,8 @@ HA_TOKEN    = os.environ.get("HA_TOKEN", "")
 FIRETV_ENT  = os.environ.get("FIRETV_ENTITY", "media_player.fire_tv_192_168_7_211")
 SONOS_ENT   = os.environ.get("SONOS_ENTITY", "media_player.living_room")
 LG_ENT      = os.environ.get("LG_ENTITY", "media_player.lg_webos_tv_oled65c3aua_2")
+LG_MAC       = os.environ.get("LG_MAC", "74:90:bc:5d:3c:f8")  # LG turns ON only via Wake-on-LAN
+LG_BROADCAST = os.environ.get("LG_BROADCAST", "192.168.7.255")
 HELPER_URL  = os.environ.get("HELPER_URL", "http://192.168.7.211:8472").rstrip("/")
 INGRESS_PATH = os.environ.get("INGRESS_PATH", "").rstrip("/")
 TMDB_BASE   = "https://api.themoviedb.org/3"
@@ -1147,14 +1149,31 @@ async def power(request: Request):
             l = await _ha_state(client, LG_ENT)
             s = await _ha_state(client, SONOS_ENT)
             action = "off" if (_is_on(f) or _is_on(l) or _is_on(s)) else "on"
-        service = "turn_on" if action == "on" else "turn_off"
-        # Call each device separately so one that doesn't support the service
-        # (e.g. Sonos turn_on) doesn't block the others.
-        for ent in (FIRETV_ENT, LG_ENT, SONOS_ENT):
+
+        async def _try(coro):
             try:
-                await ha_call(client, "media_player", service, {"entity_id": ent})
+                await coro
             except Exception:
                 pass
+
+        if action == "on":
+            # The LG can ONLY be powered on over the network (Wake-on-LAN).
+            # The Fire Stick's CEC can turn the TV off but never on, and webOS
+            # turn_on is unreliable, so WoL to the panel's MAC is the on-switch.
+            await _try(ha_call(client, "wake_on_lan", "send_magic_packet",
+                               {"mac": LG_MAC, "broadcast_address": LG_BROADCAST}))
+            # Wake the Fire Stick so its HDMI input is live when the panel lights up.
+            await _try(ha_adb(client, "input keyevent 224"))
+            # Sonos on.
+            await _try(ha_call(client, "media_player", "turn_on", {"entity_id": SONOS_ENT}))
+        else:
+            # Turn the TV off via the Fire Stick's HDMI-CEC (keyevent 177 =
+            # KEYCODE_TV_POWER -> CEC standby), exactly like the remote. webOS
+            # standby is fired too as a belt-and-suspenders backup.
+            await _try(ha_adb(client, "input keyevent 177"))
+            await _try(ha_call(client, "media_player", "turn_off", {"entity_id": LG_ENT}))
+            # Sonos off.
+            await _try(ha_call(client, "media_player", "turn_off", {"entity_id": SONOS_ENT}))
     return {"ok": True, "action": action}
 
 # ── Sonos ─────────────────────────────────────────────────────────────────

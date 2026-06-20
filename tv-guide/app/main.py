@@ -460,6 +460,13 @@ async def scan_service(show_id: int, tvdb_id: int, title: str = ""):
                         uuid = await fetch_discovery_uuid(client, show_title)
                         if uuid: ext_ids["discovery_uuid"] = uuid
                     deep_link = build_deep_link(svc, show_title, ext_ids)
+                    try:
+                        _yr = (results[0].get("first_air_date") or "")[:4]
+                        jw, _je = await justwatch_offers(client, show_title, _yr or None, tmdb_id)
+                        if jw.get(svc):
+                            deep_link = jw[svc]
+                    except Exception:
+                        pass
                     d = load_data()
                     d["services"][str(show_id)] = svc
                     if deep_link: d.setdefault("deep_links", {})[str(show_id)] = deep_link
@@ -503,6 +510,13 @@ async def scan_all(request: Request):
                                 if uuid: ext_ids["discovery_uuid"] = uuid
                             results[sid] = svc
                             deep_links[sid] = build_deep_link(svc, show_title, ext_ids)
+                            try:
+                                _yr = (tv[0].get("first_air_date") or "")[:4]
+                                jw, _je = await justwatch_offers(client, show_title, _yr or None, tmdb_id)
+                                if jw.get(svc):
+                                    deep_links[sid] = jw[svc]
+                            except Exception:
+                                pass
                             break
                     if sid in results: break
             except: pass
@@ -672,17 +686,25 @@ async def helper_proxy(path: str, request: Request):
         return JSONResponse({"raw": r.text[:2000]}, status_code=r.status_code)
 
 # ── Play: reliable launch + profile select + deep-link (via helper) ──────────
-async def _do_play(svc, pkg, profiles, profile_index, nav, deep_link):
+async def _do_play(svc, pkg, component, profiles, profile_index, nav, deep_link):
     """Runs in the background so the HTTP request returns instantly."""
     async with httpx.AsyncClient() as client:
-        # Cold-start the app when we need its profile screen (so presses aren't lost).
-        if profile_index is not None and profile_index >= 0 and len(profiles) > 1:
+        # DIRECT PLAY: cold-launch straight into the title. Netflix (and most apps) only
+        # honor a deep link on a COLD start — then they use the default profile and start
+        # playing immediately, with NO profile screen. Force-stop first is the key step.
+        if deep_link:
             try:
                 await ha_adb(client, f"am force-stop {pkg}")
-                await asyncio.sleep(1.0)
+                await asyncio.sleep(1.5)
+                if component:
+                    await ha_adb(client, f'am start -n {component} -a android.intent.action.VIEW -d "{deep_link}"')
+                else:
+                    await ha_adb(client, f'am start -a android.intent.action.VIEW -d "{deep_link}" {pkg}')
             except Exception:
                 pass
-        # 1) Reliable native launch via the helper (fall back to ADB).
+            return
+
+        # NO deep link: open the app (helper, fall back to ADB), plus optional profile select.
         used_helper = True
         try:
             r = await client.post(f"{HELPER_URL}/launch", json={"package": pkg}, timeout=15)
@@ -696,13 +718,10 @@ async def _do_play(svc, pkg, profiles, profile_index, nav, deep_link):
                 await ha_adb(client, f"monkey -p {pkg} 1")
             except Exception:
                 pass
-
-        # 2) Profile selection.
         if profile_index is not None and profile_index >= 0 and len(profiles) > 1:
             if nav and nav.get("method") == "blind":
                 await asyncio.sleep(nav.get("pre", 6))
                 gap = nav.get("gap", 0.45)
-                # Navigation only (one short command).
                 seq = ("input keyevent %d; sleep %s; " % (nav["slam_key"], gap)) * nav["slam_count"]
                 seq += ("input keyevent %d; sleep %s; " % (nav["step_key"], gap)) * int(profile_index)
                 seq = seq.strip().rstrip(";").strip()
@@ -710,30 +729,16 @@ async def _do_play(svc, pkg, profiles, profile_index, nav, deep_link):
                     await ha_adb(client, seq)
                 except Exception:
                     pass
-                # Settle in Python, then fire the SELECT as its own clean press
-                # (a long sleep inside one ADB command gets cut off before the press lands).
                 await asyncio.sleep(nav.get("settle", 2.0))
                 try:
                     await ha_adb(client, "input keyevent %d" % nav["select_key"])
                 except Exception:
                     pass
-                await asyncio.sleep(nav.get("post", 8))
             else:
                 name = profiles[profile_index] if profile_index < len(profiles) else ""
                 await asyncio.sleep(5)
                 try:
                     await client.post(f"{HELPER_URL}/selectprofile", json={"name": name}, timeout=15)
-                except Exception:
-                    pass
-                await asyncio.sleep(4)
-
-        # 3) Deep-link into the title.
-        if deep_link:
-            try:
-                await client.post(f"{HELPER_URL}/deeplink", json={"package": pkg, "url": deep_link}, timeout=15)
-            except Exception:
-                try:
-                    await ha_adb(client, f'am start -a android.intent.action.VIEW -d "{deep_link}" {pkg}')
                 except Exception:
                     pass
 
@@ -753,7 +758,7 @@ async def firetv_play(request: Request):
         profile_index = profiles.index(profile_name)
     deep_link = load_data().get("deep_links", {}).get(str(show_id)) if show_id else None
     nav = PROFILE_NAV.get(svc)
-    asyncio.create_task(_do_play(svc, pkg, profiles, profile_index, nav, deep_link))
+    asyncio.create_task(_do_play(svc, pkg, launch[1], profiles, profile_index, nav, deep_link))
     return {"ok": True, "started": True, "service": svc, "profile_index": profile_index, "deep_link": deep_link}
 
 # ── Capture deep-link (read what the Fire TV's Play button fired) ─────────────
@@ -1129,7 +1134,8 @@ async def power_state():
     async with httpx.AsyncClient() as client:
         f = await _ha_state(client, FIRETV_ENT)
         l = await _ha_state(client, LG_ENT)
-    return {"firetv": f, "lg": l, "on": _is_on(f) or _is_on(l)}
+        s = await _ha_state(client, SONOS_ENT)
+    return {"firetv": f, "lg": l, "sonos": s, "on": _is_on(f) or _is_on(l) or _is_on(s)}
 
 @app.post("/api/power")
 async def power(request: Request):
@@ -1139,9 +1145,16 @@ async def power(request: Request):
         if action == "toggle":
             f = await _ha_state(client, FIRETV_ENT)
             l = await _ha_state(client, LG_ENT)
-            action = "off" if (_is_on(f) or _is_on(l)) else "on"
+            s = await _ha_state(client, SONOS_ENT)
+            action = "off" if (_is_on(f) or _is_on(l) or _is_on(s)) else "on"
         service = "turn_on" if action == "on" else "turn_off"
-        await ha_call(client, "media_player", service, {"entity_id": [FIRETV_ENT, LG_ENT]})
+        # Call each device separately so one that doesn't support the service
+        # (e.g. Sonos turn_on) doesn't block the others.
+        for ent in (FIRETV_ENT, LG_ENT, SONOS_ENT):
+            try:
+                await ha_call(client, "media_player", service, {"entity_id": ent})
+            except Exception:
+                pass
     return {"ok": True, "action": action}
 
 # ── Sonos ─────────────────────────────────────────────────────────────────

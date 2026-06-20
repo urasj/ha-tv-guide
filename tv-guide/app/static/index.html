@@ -148,8 +148,8 @@
   .db{width:40px;height:40px;border-radius:11px;background:var(--panel2);color:#fff;border:none;font-size:16px;cursor:pointer;flex-shrink:0}
   .db:hover{background:#272b3b}
   .db.on{background:var(--violet);color:#fff}
-  .db.power{background:#7a1f24}
-  .db.power.on{background:var(--teal);color:#062b26}
+  .db.power{background:#ff3b30;color:#fff}
+  .db.power.on{background:#15663f;color:#fff}
   .vbar{width:96px;height:6px;background:rgba(255,255,255,.16);border-radius:3px;overflow:hidden}
   .vbar>i{display:block;height:100%;width:42%;background:var(--violet)}
   .sep{width:1px;height:34px;background:var(--line);flex-shrink:0}
@@ -219,7 +219,8 @@
 <div class="dock">
   <div class="dgrp">
     <span class="dlbl">FIRE&nbsp;TV</span>
-    <button class="db power" id="btn-power" onclick="powerToggle()" title="Power Fire TV + LG TV">⏻</button>
+    <button class="db power" id="btn-power" onclick="powerToggle()" title="Power — Fire TV, LG TV & Sonos">⏻</button>
+    <span class="dlbl" style="font-size:10px;margin-left:-2px">LG&nbsp;TV</span>
     <div class="pad">
       <span></span><button class="pk" onclick="remote('KEYCODE_DPAD_UP')">▲</button><span></span>
       <button class="pk" onclick="remote('KEYCODE_DPAD_LEFT')">◀</button><button class="pk c" onclick="remote('KEYCODE_DPAD_CENTER')">OK</button><button class="pk" onclick="remote('KEYCODE_DPAD_RIGHT')">▶</button>
@@ -460,9 +461,9 @@ async function toggleWatched(sid,epId,isW){
 }
 function resumeShow(showId){ const svc=getSvc(showId); if(!svc){ openModal(showId); toast('Pick a streaming service first','error'); return; } playShow(showId,svc); }
 function playShow(showId, svc){
-  const profiles = appData.profiles?.[svc] || [];
-  if(profiles.length > 1){ showProfilePicker(svc, (idx)=> doPlay(showId, svc, idx)); }
-  else { doPlay(showId, svc, -1); }
+  // Direct-play: the stored deep link cold-launches straight into the title on the
+  // default profile, so no "who's watching" picker is needed.
+  doPlay(showId, svc, -1);
 }
 async function doPlay(showId, svc, idx){
   const name = (appData.profiles?.[svc]||[])[idx] || '';
@@ -535,7 +536,7 @@ async function scanAll(){
   st.classList.remove('show'); btn.disabled=false;
 }
 
-async function powerToggle(){ try{ const r=await post('api/power',{action:'toggle'}); toast('Power '+(r.action==='on'?'on':'off')+' · Fire TV + LG TV'); const b=document.getElementById('btn-power'); if(b) b.classList.toggle('on',r.action==='on'); }catch(e){ toast('Power failed: '+e.message,'error'); } }
+async function powerToggle(){ try{ const r=await post('api/power',{action:'toggle'}); toast('Power '+(r.action==='on'?'on':'off')+' · Fire TV + LG TV + Sonos'); const b=document.getElementById('btn-power'); if(b) b.classList.toggle('on',r.action==='on'); }catch(e){ toast('Power failed: '+e.message,'error'); } }
 async function remote(key){ try{ await post('api/firetv/command',{command:key}); }catch(e){ toast('Remote error','error'); } }
 async function loadPowerState(){ try{ const r=await get('api/power/state'); const b=document.getElementById('btn-power'); if(b) b.classList.toggle('on',!!r.on); }catch(e){} }
 

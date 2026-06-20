@@ -1173,7 +1173,16 @@ async def power(request: Request):
             async def _pick_justin():
                 async with httpx.AsyncClient() as c2:
                     try:
-                        await ha_adb(c2, "for i in $(seq 1 7); do sleep 3; am switch-user 0; done", timeout=40)
+                        # Only switch to Justin WHILE the Fire TV profile picker
+                        # is the foreground app, then stop. `am switch-user` is a
+                        # user switch (not a D-pad/select press), so it can never
+                        # pick a tile on the home screen; gating on the picker
+                        # means nothing fires once Justin's home is already up.
+                        await ha_adb(c2,
+                            "for i in $(seq 1 10); do "
+                            "if dumpsys window 2>/dev/null | grep -q profilepicker; "
+                            "then am switch-user 0; break; fi; sleep 2; done",
+                            timeout=40)
                     except Exception:
                         pass
             asyncio.create_task(_pick_justin())

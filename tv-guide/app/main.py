@@ -1163,11 +1163,20 @@ async def power(request: Request):
             # turn_on is unreliable, so WoL to the panel's MAC is the on-switch.
             await _try(ha_call(client, "wake_on_lan", "send_magic_packet",
                                {"mac": LG_MAC, "broadcast_address": LG_BROADCAST}))
-            # Wake the Fire Stick (so its HDMI input is live) and auto-select
-            # Justin's profile (Android user 0, the primary) so the Fire TV
-            # profile picker doesn't sit waiting. `am switch-user` selects the
-            # user whether or not the picker is on screen.
-            await _try(ha_adb(client, "input keyevent 224; sleep 4; am switch-user 0", timeout=20))
+            # Wake the Fire Stick so its HDMI input is live.
+            await _try(ha_adb(client, "input keyevent 224", timeout=15))
+            # Auto-select Justin's profile (Android user 0) in the BACKGROUND so
+            # the button returns instantly. The Fire TV profile picker appears a
+            # few seconds after the Stick wakes, so fire `am switch-user 0`
+            # repeatedly across the boot window until it lands (it dismisses the
+            # picker; harmless no-op once Justin is already active).
+            async def _pick_justin():
+                async with httpx.AsyncClient() as c2:
+                    try:
+                        await ha_adb(c2, "for i in $(seq 1 7); do sleep 3; am switch-user 0; done", timeout=40)
+                    except Exception:
+                        pass
+            asyncio.create_task(_pick_justin())
             # Sonos is the TV soundbar -> it auto-routes TV audio when the panel
             # comes on; don't force-play (would blast a stale music queue).
         else:

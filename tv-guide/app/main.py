@@ -1137,7 +1137,7 @@ async def power_state():
         f = await _ha_state(client, FIRETV_ENT)
         l = await _ha_state(client, LG_ENT)
         s = await _ha_state(client, SONOS_ENT)
-    return {"firetv": f, "lg": l, "sonos": s, "on": _is_on(f) or _is_on(l) or _is_on(s)}
+    return {"firetv": f, "lg": l, "sonos": s, "on": _is_on(l)}
 
 @app.post("/api/power")
 async def power(request: Request):
@@ -1145,10 +1145,11 @@ async def power(request: Request):
     action = body.get("action", "toggle")
     async with httpx.AsyncClient() as client:
         if action == "toggle":
-            f = await _ha_state(client, FIRETV_ENT)
             l = await _ha_state(client, LG_ENT)
-            s = await _ha_state(client, SONOS_ENT)
-            action = "off" if (_is_on(f) or _is_on(l) or _is_on(s)) else "on"
+            # Base the toggle on the TV alone. Sonos plays independently, so
+            # OR-ing it in meant a playing Sonos forced the button to "off" and
+            # the TV could never be turned on.
+            action = "off" if _is_on(l) else "on"
 
         async def _try(coro):
             try:

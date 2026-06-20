@@ -788,6 +788,111 @@ async def firetv_capture():
             links.append(line)
     return {"ok": True, "links": links, "latest": links[-1] if links else None}
 
+# ── JustWatch: real per-title direct-play deep links ─────────────────────────
+JW_PKG_MAP = {
+    "netflix": "netflix", "amazonprimevideo": "prime", "amazonprime": "prime",
+    "disneyplus": "disney", "hulu": "hulu", "max": "max", "hbomax": "max",
+    "peacock": "peacock", "discoveryplus": "discovery", "paramountplus": "paramount",
+    "appletvplus": "apple", "tubitv": "tubi", "plutotv": "pluto", "starz": "starz",
+    "amcplus": "amc", "crunchyroll": "crunchyroll", "shudder": "shudder",
+}
+
+_JW_QUERY = """
+query GetSearchTitles($searchTitlesFilter: TitleFilter!, $country: Country!, $language: Language!, $first: Int!, $filter: OfferFilter!) {
+  popularTitles(country: $country, filter: $searchTitlesFilter, first: $first, sortBy: POPULAR) {
+    edges { node {
+      objectType
+      content(country: $country, language: $language) {
+        title
+        originalReleaseYear
+        externalIds { tmdbId imdbId }
+      }
+      offers(country: $country, platform: WEB, filter: $filter) {
+        monetizationType
+        standardWebURL
+        package { technicalName clearName }
+      }
+    } }
+  }
+}
+"""
+
+def _netflix_play_link(web_url):
+    m = re.search(r"/(?:title|watch)/(\d+)", web_url or "")
+    if m:
+        return f"http://www.netflix.com/watch/{m.group(1)}"
+    return web_url
+
+async def justwatch_offers(client, title, year=None, tmdb_id=None):
+    payload = {
+        "operationName": "GetSearchTitles",
+        "variables": {
+            "first": 8,
+            "searchTitlesFilter": {"searchQuery": title, "objectTypes": ["SHOW"], "includeTitlesWithoutUrl": True},
+            "country": "US", "language": "en",
+            "filter": {"bestOnly": False},
+        },
+        "query": _JW_QUERY,
+    }
+    try:
+        r = await client.post("https://apis.justwatch.com/graphql", json=payload,
+                              headers={"Content-Type": "application/json", "User-Agent": "Mozilla/5.0"}, timeout=20)
+    except Exception as e:
+        return {}, f"request failed: {e}"
+    if r.status_code != 200:
+        return {}, f"http {r.status_code}: {r.text[:160]}"
+    data = r.json()
+    if data.get("errors"):
+        return {}, f"graphql: {str(data['errors'])[:160]}"
+    edges = (((data or {}).get("data") or {}).get("popularTitles") or {}).get("edges") or []
+    chosen = None
+    if tmdb_id:
+        for e in edges:
+            node = e.get("node") or {}
+            ext = (node.get("content") or {}).get("externalIds") or {}
+            if str(ext.get("tmdbId")) == str(tmdb_id):
+                chosen = node
+                break
+    if not chosen and edges:
+        chosen = edges[0].get("node")
+    if not chosen:
+        return {}, "no results"
+    out = {}
+    for off in (chosen.get("offers") or []):
+        pkg = (off.get("package") or {}).get("technicalName")
+        svc = JW_PKG_MAP.get(pkg)
+        url = off.get("standardWebURL")
+        if not svc or not url:
+            continue
+        out.setdefault(svc, _netflix_play_link(url) if svc == "netflix" else url)
+    return out, None
+
+@app.get("/api/justwatch")
+async def justwatch_test(title: str, year: int = None, tmdb_id: int = None):
+    async with httpx.AsyncClient() as client:
+        offers, err = await justwatch_offers(client, title, year, tmdb_id)
+    return {"title": title, "offers": offers, "error": err}
+
+@app.post("/api/shows/{show_id}/fix-link")
+async def fix_link(show_id: int, request: Request):
+    body = await request.json()
+    title = body.get("title", "")
+    svc = body.get("service")
+    tmdb_id = body.get("tmdbId")
+    year = body.get("year")
+    async with httpx.AsyncClient() as client:
+        offers, err = await justwatch_offers(client, title, year, tmdb_id)
+    if err:
+        raise HTTPException(502, f"JustWatch: {err}")
+    link = offers.get(svc) if svc else None
+    if link:
+        d = load_data()
+        d.setdefault("deep_links", {})[str(show_id)] = link
+        if svc:
+            d.setdefault("services", {})[str(show_id)] = svc
+        save_data(d)
+    return {"ok": bool(link), "service": svc, "deep_link": link, "all_offers": offers}
+
 # ── Archive / remove / restore ───────────────────────────────────────────────
 async def _sonarr_add(client, tvdb, monitor="all", search=False):
     lr = await client.get(f"{SONARR_URL}/api/v3/series/lookup",

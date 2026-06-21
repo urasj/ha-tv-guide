@@ -641,7 +641,12 @@ async function unarchiveShow(id){ try{ await post(`api/shows/${id}/unarchive`,{}
 async function restoreShow(tvdb,btn){ if(btn){btn.disabled=true;btn.textContent='Restoring…';} try{ const r=await post('api/restore',{tvdbId:tvdb}); toast('Restored '+(r.title||'')); await loadShows(); renderArchive(); }catch(e){ if(btn){btn.disabled=false;btn.textContent='↺ Restore';} toast('Restore failed: '+e.message,'error'); } }
 async function purgeRemoved(tvdb){ try{ await del('api/removed/'+tvdb); toast('Deleted from history'); renderArchive(); }catch(e){ toast('Failed: '+e.message,'error'); } }
 
-if(!window.__tvg){ window.__tvg=true; loadShows(); sonosLoadState(); loadPowerState(); }
+if(!window.__tvg){ window.__tvg=true; loadShows(); sonosLoadState(); loadPowerState();
+  // Keep power button + Sonos in sync with external changes (remote, etc.)
+  setInterval(function(){ loadPowerState(); }, 7000);
+  document.addEventListener('visibilitychange', function(){ if(!document.hidden){ loadPowerState(); sonosLoadState(); } });
+  window.addEventListener('focus', function(){ loadPowerState(); });
+}
 </script>
 </body>
 </html>
